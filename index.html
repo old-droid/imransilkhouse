@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Imran Silk House</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/fuse.js@6.6.2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+body{font-family:'Inter',sans-serif;background:#f0f2f5;color:#1a1a2e;margin:0;padding:0}
+.card{background:white;border-radius:8px;border:1px solid #e0e0e0;padding:16px}
+input,select{background:white;border:1px solid #d0d0d0;padding:10px 12px;border-radius:6px;font-size:14px;outline:none;width:100%;box-sizing:border-box}
+input:focus,select:focus{border-color:#1a73e8}
+.btn{background:#1a73e8;color:white;border:none;padding:10px 24px;border-radius:6px;font-weight:600;cursor:pointer;font-size:14px}
+.btn:hover{background:#1557b0}
+.btn-danger{background:#dc3545}
+.btn-danger:hover{background:#b02a37}
+.btn-gray{background:#6c757d;color:white}
+.btn-gray:hover{background:#5a6268}
+.btn-outline{background:transparent;border:1px solid #d0d0d0;color:#1a1a2e}
+.btn-outline:hover{background:#f0f0f0}
+.btn-green{background:#198754;color:white}
+.btn-green:hover{background:#146c43}
+label{font-size:11px;font-weight:700;color:#666;text-transform:uppercase;display:block;margin-bottom:4px}
+.card-hover:hover{box-shadow:0 2px 8px rgba(0,0,0,0.1)}
+@media print{.no-print{display:none!important}.print-only{display:block!important}body{background:white;color:black}}
+.print-only{display:none}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:#f0f2f5}
+::-webkit-scrollbar-thumb{background:#ccc;border-radius:10px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useMemo } = React;
+
+const SUIT_TYPES = ["Formal Coat Suits","Tuxedos","Blazers","Prince Coats","Premium Sherwanis","Jodhpuri Suits","Nawabi Suits","Designer Kurta Sets","Pathani Suits","Shoes"];
+
+const MEASUREMENTS = ["Length","Chest","Waist","Hip","Shoulder","Sleeve","Collar","Bottom"];
+
+const getNextId = () => {
+  let c = parseInt(localStorage.getItem('imran_order_counter') || '0');
+  c++;
+  localStorage.setItem('imran_order_counter', c.toString());
+  return c;
+};
+
+const Icon = ({ name, className, size = 20 }) => {
+  useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [name]);
+  return <i data-lucide={name} className={className} style={{ width: size, height: size }}></i>;
+};
+
+const App = () => {
+  const [role, setRole] = useState(null);
+  const [pass, setPass] = useState(localStorage.getItem('imran_owner_pass') || '');
+  const [isAuth, setIsAuth] = useState(false);
+  const [view, setView] = useState('dashboard');
+  const [orders, setOrders] = useState(() => JSON.parse(localStorage.getItem('imran_orders') || '[]'));
+  const [tailorList, setTailorList] = useState(() => JSON.parse(localStorage.getItem('imran_tailors') || '[]'));
+  const [salespersons, setSalespersons] = useState(() => JSON.parse(localStorage.getItem('imran_sales') || '["Rahman","Tanzim"]'));
+  const [shopName, setShopName] = useState(localStorage.getItem('imran_shop_name') || 'IMRAN SILK HOUSE');
+  const [currentOrder, setCurrentOrder] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [loginPass, setLoginPass] = useState('');
+
+  useEffect(() => { localStorage.setItem('imran_orders', JSON.stringify(orders)); }, [orders]);
+  useEffect(() => { localStorage.setItem('imran_tailors', JSON.stringify(tailorList)); }, [tailorList]);
+  useEffect(() => { localStorage.setItem('imran_sales', JSON.stringify(salespersons)); }, [salespersons]);
+  useEffect(() => { localStorage.setItem('imran_owner_pass', pass); }, [pass]);
+  useEffect(() => { localStorage.setItem('imran_shop_name', shopName); }, [shopName]);
+
+  const stats = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const todayOrders = orders.filter(o => o.date === today);
+    const totalRevenue = orders.reduce((acc, o) => acc + (parseFloat(o.total) || 0), 0);
+    const totalPaid = orders.reduce((acc, o) => acc + (parseFloat(o.paid) || 0), 0);
+    return { todayOrders, totalToday: todayOrders.length, totalOrders: orders.length, totalRevenue, totalPaid, totalPending: totalRevenue - totalPaid };
+  }, [orders]);
+
+  const filteredOrders = useMemo(() => {
+    if (!searchQuery) return [...orders].reverse();
+    const fuse = new Fuse(orders, { keys: ['customerName','phone','tailorName','salesperson','suitType'], threshold: 0.3 });
+    return fuse.search(searchQuery).map(r => r.item);
+  }, [orders, searchQuery]);
+
+  const downloadTodayPDF = () => {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+    const to = stats.todayOrders;
+    let y = 20;
+    doc.setFontSize(18);
+    doc.text(shopName, 105, y, { align: 'center' });
+    y += 10;
+    doc.setFontSize(12);
+    doc.text(`Daily Report - ${today}`, 105, y, { align: 'center' });
+    y += 10;
+    doc.setFontSize(11);
+    doc.text(`Total Orders Today: ${to.length}`, 14, y);
+    y += 8;
+    doc.text(`Total Revenue Today: Rs. ${to.reduce((a,o) => a + (parseFloat(o.total)||0), 0)}`, 14, y);
+    y += 8;
+    doc.text(`Total Collected Today: Rs. ${to.reduce((a,o) => a + (parseFloat(o.paid)||0), 0)}`, 14, y);
+    y += 12;
+    if (to.length > 0) {
+      doc.setFontSize(10);
+      doc.text('Orders:', 14, y);
+      y += 6;
+      to.forEach((o, i) => {
+        const line = `${i+1}. #${o.id} ${o.customerName} - ${o.suitType||'N/A'} - Rs.${o.total} [${o.status}]`;
+        if (y > 270) { doc.addPage(); y = 20; }
+        doc.text(line, 18, y);
+        y += 6;
+      });
+    }
+    doc.save(`imran-silk-house-report-${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
+  if (!isAuth) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center" style={{background:'#f0f2f5'}}>
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold" style={{color:'#1a1a2e'}}>IMRAN SILK HOUSE</h1>
+          <p className="text-sm text-gray-500 mt-1">Tailoring Management</p>
+        </div>
+        <div className="bg-white rounded-lg border border-gray-200 p-8 w-full max-w-sm space-y-4">
+          <div>
+            <label>Owner Password</label>
+            <input type="password" placeholder={pass ? "Enter password" : "Set password"} value={loginPass} onChange={e => setLoginPass(e.target.value)} />
+          </div>
+          <button className="btn w-full" onClick={() => {
+            if (!pass) { setPass(loginPass); setRole('owner'); setIsAuth(true); return; }
+            if (loginPass === pass) { setRole('owner'); setIsAuth(true); return; }
+            alert('Wrong password');
+          }}>{pass ? 'Login as Owner' : 'Set Password & Login'}</button>
+          {pass && <button className="btn-outline btn w-full" onClick={() => { setRole('sales'); setIsAuth(true); }}>Enter as Sales (Guest)</button>}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col" style={{paddingBottom:'80px'}}>
+      <header className="bg-white border-b border-gray-200 px-4 py-3 flex justify-between items-center sticky top-0 z-50 no-print">
+        <div className="flex items-center gap-3">
+          <h1 className="text-lg font-bold" style={{color:'#1a1a2e'}}>IMRAN SILK HOUSE</h1>
+          <div className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px] font-bold uppercase">{role}</div>
+        </div>
+        <button onClick={() => { setIsAuth(false); setLoginPass(''); setRole(null); }} className="text-gray-400 hover:text-gray-600"><Icon name="log-out" size={18} /></button>
+      </header>
+
+      <main className="px-4 py-6 max-w-4xl mx-auto w-full" style={{maxWidth:'900px'}}>
+        {view === 'dashboard' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="card text-center"><p className="text-xs text-gray-500 uppercase font-bold">Today</p><p className="text-2xl font-bold">{stats.totalToday}</p></div>
+              <div className="card text-center"><p className="text-xs text-gray-500 uppercase font-bold">Total</p><p className="text-2xl font-bold">{stats.totalOrders}</p></div>
+              {role === 'owner' && <div className="card text-center"><p className="text-xs text-gray-500 uppercase font-bold">Revenue</p><p className="text-2xl font-bold" style={{color:'#1a73e8'}}>Rs.{stats.totalRevenue}</p></div>}
+              <div className="card text-center"><p className="text-xs text-gray-500 uppercase font-bold">Pending</p><p className="text-2xl font-bold" style={{color:'#dc3545'}}>Rs.{stats.totalPending}</p></div>
+            </div>
+
+            <div className="flex gap-2 no-print">
+              <div className="relative flex-1">
+                <input placeholder="Search orders..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-10" />
+                <Icon name="search" className="absolute left-3 top-3 text-gray-400" size={16} />
+              </div>
+              <button onClick={downloadTodayPDF} className="btn-gray btn text-sm flex items-center gap-1"><Icon name="file-text" size={16} /> PDF</button>
+            </div>
+
+            <div className="space-y-2">
+              {filteredOrders.map(order => (
+                <div key={order.id} className="card card-hover flex justify-between items-center cursor-pointer" onClick={() => { setCurrentOrder(order); setView('edit-order'); }}>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold">#{order.id}</span>
+                      <span className="font-semibold truncate">{order.customerName}</span>
+                      <span className="text-xs text-gray-400">{order.suitType||''}</span>
+                    </div>
+                    <p className="text-xs text-gray-400 truncate">{order.phone} &middot; {order.tailorName} &middot; {order.salesperson}</p>
+                    <p className="text-xs text-gray-400">Delivery: {order.deliveryDate||'N/A'} &middot; {order.suitType||''}</p>
+                  </div>
+                  <div className="text-right ml-4 flex-shrink-0">
+                    <p className="font-bold" style={{color:'#1a73e8'}}>Rs.{order.total}</p>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded ${order.status==='Pending'?'bg-yellow-100 text-yellow-700':order.status==='Stitched'?'bg-blue-100 text-blue-700':order.status==='Ready'?'bg-green-100 text-green-700':'bg-gray-100 text-gray-500'}`}>{order.status}</span>
+                  </div>
+                </div>
+              ))}
+              {filteredOrders.length === 0 && <p className="text-center text-gray-400 py-8">No orders found</p>}
+            </div>
+          </div>
+        )}
+
+        {view === 'edit-order' && (
+          <OrderForm
+            order={currentOrder}
+            tailors={tailorList}
+            salespersons={salespersons}
+            onSave={o => {
+              if (o.id) {
+                setOrders(orders.map(x => x.id === o.id ? o : x));
+              } else {
+                o.id = getNextId();
+                o.date = new Date().toISOString().split('T')[0];
+                setOrders([o, ...orders]);
+              }
+              setView('dashboard');
+            }}
+            onBack={() => setView('dashboard')}
+            shopName={shopName}
+          />
+        )}
+
+        {view === 'staff' && (
+          <StaffManager
+            tailors={tailorList}
+            setTailors={setTailorList}
+            salespersons={salespersons}
+            setSalespersons={setSalespersons}
+          />
+        )}
+
+        {view === 'reports' && role === 'owner' && (
+          <div className="space-y-6">
+            <h2 className="text-xl font-bold">Analytics</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="card text-center p-6"><p className="text-xs text-gray-500 uppercase font-bold">Total Revenue</p><p className="text-3xl font-bold" style={{color:'#1a73e8'}}>Rs.{stats.totalRevenue}</p></div>
+              <div className="card text-center p-6"><p className="text-xs text-gray-500 uppercase font-bold">Collected</p><p className="text-3xl font-bold" style={{color:'#198754'}}>Rs.{stats.totalPaid}</p></div>
+              <div className="card text-center p-6"><p className="text-xs text-gray-500 uppercase font-bold">Pending</p><p className="text-3xl font-bold" style={{color:'#dc3545'}}>Rs.{stats.totalPending}</p></div>
+            </div>
+            <div className="card p-4"><p className="text-sm text-gray-500">Total Orders: <strong>{stats.totalOrders}</strong> &middot; Today: <strong>{stats.totalToday}</strong></p></div>
+            <button onClick={downloadTodayPDF} className="btn flex items-center gap-2"><Icon name="file-text" size={18} /> Download Today's Report (PDF)</button>
+          </div>
+        )}
+
+        {view === 'settings' && role === 'owner' && (
+          <div className="max-w-md mx-auto space-y-6">
+            <h2 className="text-xl font-bold">Settings</h2>
+            <div className="card space-y-4">
+              <div><label>Shop Name</label><input value={shopName} onChange={e => setShopName(e.target.value)} /></div>
+              <div><label>Owner Password</label><input type="password" value={pass} onChange={e => setPass(e.target.value)} /></div>
+              <button onClick={() => { if (confirm('Delete all data?')) { localStorage.clear(); window.location.reload(); } }} className="btn btn-danger w-full">Factory Reset</button>
+            </div>
+          </div>
+        )}
+      </main>
+
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-2 py-2 flex justify-around items-center no-print z-50" style={{boxShadow:'0 -2px 8px rgba(0,0,0,0.05)'}}>
+        <button onClick={() => setView('dashboard')} className={`flex flex-col items-center px-3 py-1 rounded ${view==='dashboard'?'text-blue-600':'text-gray-400'}`}><Icon name="home" size={20} /><span className="text-[10px] font-bold mt-0.5">HOME</span></button>
+        <button onClick={() => setView('staff')} className={`flex flex-col items-center px-3 py-1 rounded ${view==='staff'?'text-blue-600':'text-gray-400'}`}><Icon name="users" size={20} /><span className="text-[10px] font-bold mt-0.5">STAFF</span></button>
+        <button onClick={() => { setCurrentOrder(null); setView('edit-order'); }} className="w-12 h-12 bg-blue-600 text-white rounded-full flex items-center justify-center -mt-4 shadow-lg" style={{boxShadow:'0 4px 12px rgba(26,115,232,0.4)'}}><Icon name="plus" size={28} /></button>
+        {role === 'owner' && <button onClick={() => setView('reports')} className={`flex flex-col items-center px-3 py-1 rounded ${view==='reports'?'text-blue-600':'text-gray-400'}`}><Icon name="bar-chart-3" size={20} /><span className="text-[10px] font-bold mt-0.5">REPORTS</span></button>}
+        {role === 'owner' && <button onClick={() => setView('settings')} className={`flex flex-col items-center px-3 py-1 rounded ${view==='settings'?'text-blue-600':'text-gray-400'}`}><Icon name="settings" size={20} /><span className="text-[10px] font-bold mt-0.5">CONFIG</span></button>}
+      </nav>
+    </div>
+  );
+};
+
+const StaffManager = ({ tailors, setTailors, salespersons, setSalespersons }) => {
+  const [tab, setTab] = useState('tailors');
+  const [name, setName] = useState('');
+  const [role, setRole] = useState(SUIT_TYPES[0]);
+
+  const addTailor = () => {
+    if (!name) return;
+    setTailors([...tailors, { name, role }]);
+    setName('');
+  };
+
+  const removeTailor = (idx) => {
+    setTailors(tailors.filter((_, i) => i !== idx));
+  };
+
+  const addSales = () => {
+    if (!name) return;
+    setSalespersons([...salespersons, name]);
+    setName('');
+  };
+
+  const removeSales = (idx) => {
+    setSalespersons(salespersons.filter((_, i) => i !== idx));
+  };
+
+  return (
+    <div className="space-y-6 max-w-md mx-auto">
+      <h2 className="text-xl font-bold">Staff Control</h2>
+      <div className="flex bg-gray-100 p-1 rounded-lg">
+        <button onClick={() => setTab('tailors')} className={`flex-1 py-2 rounded-md text-sm font-bold ${tab==='tailors'?'bg-white shadow-sm text-blue-600':'text-gray-500'}`}>Tailors</button>
+        <button onClick={() => setTab('sales')} className={`flex-1 py-2 rounded-md text-sm font-bold ${tab==='sales'?'bg-white shadow-sm text-blue-600':'text-gray-500'}`}>Sales</button>
+      </div>
+
+      {tab === 'tailors' && (
+        <div className="space-y-4">
+          <div className="flex gap-2">
+            <input className="flex-1" placeholder="Tailor name..." value={name} onChange={e => setName(e.target.value)} />
+            <select className="w-40" value={role} onChange={e => setRole(e.target.value)}>
+              {SUIT_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <button onClick={addTailor} className="btn"><Icon name="plus" size={18} /></button>
+          </div>
+          <div className="space-y-2">
+            {tailors.map((t, i) => (
+              <div key={i} className="card flex justify-between items-center">
+                <div>
+                  <span className="font-semibold">{t.name}</span>
+                  <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">{t.role}</span>
+                </div>
+                <button onClick={() => removeTailor(i)} className="text-red-400 hover:text-red-600"><Icon name="trash-2" size={16} /></button>
+              </div>
+            ))}
+            {tailors.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No tailors added yet</p>}
+          </div>
+        </div>
+      )}
+
+      {tab === 'sales' && (
+        <div className="space-y-4">
+          <div className="flex gap-2">
+            <input className="flex-1" placeholder="Salesperson name..." value={name} onChange={e => setName(e.target.value)} />
+            <button onClick={addSales} className="btn"><Icon name="plus" size={18} /></button>
+          </div>
+          <div className="space-y-2">
+            {salespersons.map((s, i) => (
+              <div key={i} className="card flex justify-between items-center">
+                <span className="font-semibold">{s}</span>
+                <button onClick={() => removeSales(i)} className="text-red-400 hover:text-red-600"><Icon name="trash-2" size={16} /></button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const OrderForm = ({ order, tailors, salespersons, onSave, onBack, shopName }) => {
+  const [f, setF] = useState(order || {
+    customerName: '', phone: '', suitType: SUIT_TYPES[0], tailorName: '', salesperson: (salespersons[0]||''),
+    total: '', paid: '', deliveryDate: '', measurements: {}, status: 'Pending'
+  });
+
+  const filteredTailors = useMemo(() => {
+    return tailors.filter(t => t.role === f.suitType);
+  }, [tailors, f.suitType]);
+
+  useEffect(() => {
+    if (filteredTailors.length > 0 && !f.tailorName) {
+      setF(prev => ({ ...prev, tailorName: filteredTailors[0].name }));
+    }
+    if (filteredTailors.length > 0 && !filteredTailors.find(t => t.name === f.tailorName)) {
+      setF(prev => ({ ...prev, tailorName: filteredTailors[0].name }));
+    }
+  }, [f.suitType]);
+
+  const sendWhatsApp = () => {
+    const msg = `Hello! by ${shopName} Order #${order?.id || 'NEW'} Ordered ${f.suitType}, Delivery date: ${f.deliveryDate || 'TBD'}, Amount to be paid: Rs.${f.total}.`;
+    window.open(`https://wa.me/${f.phone}?text=${encodeURIComponent(msg)}`, '_blank');
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between no-print">
+        <button onClick={onBack} className="text-gray-500 hover:text-gray-700 flex items-center gap-1 text-sm"><Icon name="arrow-left" size={16} /> Back</button>
+        <h2 className="text-lg font-bold">{order ? 'Edit Order' : 'New Order'}</h2>
+        <div className="w-16"></div>
+      </div>
+
+      <div className="card space-y-6 no-print">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div><label>Customer Name</label><input value={f.customerName} onChange={e => setF({...f, customerName: e.target.value})} /></div>
+          <div><label>Phone Number</label><input type="tel" value={f.phone} onChange={e => setF({...f, phone: e.target.value})} /></div>
+          <div><label>Suit Type</label>
+            <select value={f.suitType} onChange={e => setF({...f, suitType: e.target.value, tailorName: ''})}>
+              {SUIT_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div><label>Tailor (by role)</label>
+            <select value={f.tailorName} onChange={e => setF({...f, tailorName: e.target.value})}>
+              {filteredTailors.map(t => <option key={t.name} value={t.name}>{t.name}</option>)}
+            </select>
+            {filteredTailors.length === 0 && <p className="text-xs text-red-500 mt-1">No tailor available for this suit type</p>}
+          </div>
+          <div><label>Salesperson</label>
+            <select value={f.salesperson} onChange={e => setF({...f, salesperson: e.target.value})}>
+              {salespersons.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div><label>Delivery Date</label><input type="date" value={f.deliveryDate} onChange={e => setF({...f, deliveryDate: e.target.value})} /></div>
+          <div><label>Status</label>
+            <select value={f.status} onChange={e => setF({...f, status: e.target.value})}>
+              <option value="Pending">Pending</option>
+              <option value="Stitched">Stitched</option>
+              <option value="Ready">Ready</option>
+              <option value="Delivered">Delivered</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <h3 className="text-xs font-bold text-gray-500 uppercase mb-3">Measurements</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {MEASUREMENTS.map(m => (
+              <div key={m}><label>{m}</label><input type="number" value={f.measurements[m] || ''} onChange={e => setF({...f, measurements: {...f.measurements, [m]: e.target.value}})} /></div>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
+          <div><label>Total Bill</label><input type="number" className="text-lg font-bold" style={{color:'#1a73e8'}} value={f.total} onChange={e => setF({...f, total: e.target.value})} /></div>
+          <div><label>Paid</label><input type="number" className="text-lg font-bold" style={{color:'#198754'}} value={f.paid} onChange={e => setF({...f, paid: e.target.value})} /></div>
+        </div>
+
+        <div className="flex gap-3">
+          <button onClick={() => onSave(f)} className="btn flex-1">Save</button>
+          <button onClick={() => window.print()} className="btn-gray btn flex items-center gap-2"><Icon name="printer" size={16} /> Print Slip</button>
+        </div>
+      </div>
+
+      <button onClick={sendWhatsApp} className="btn-green btn w-full flex items-center justify-center gap-2 no-print"><Icon name="message-circle" size={20} /> Send WhatsApp</button>
+
+      <div className="print-only card">
+        <div className="text-center border-b-2 border-gray-800 pb-3 mb-4">
+          <h2 className="text-xl font-bold">{shopName}</h2>
+          <p className="text-lg font-bold mt-1">Order #{order?.id || 'NEW'}</p>
+          <p className="text-sm font-semibold text-gray-600">{f.suitType}</p>
+        </div>
+        <div className="flex justify-center gap-6 text-sm mb-3">
+          <div><span className="text-gray-600">Delivery:</span> <span className="font-bold">{f.deliveryDate || 'TBD'}</span></div>
+          <div><span className="text-gray-600">Status:</span> <span className="font-bold">{f.status}</span></div>
+        </div>
+        <div className="border-b border-gray-300 pb-3 mb-3">
+          <p className="font-bold text-xs uppercase text-center">Measurements</p>
+        </div>
+        <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
+          {Object.entries(f.measurements).filter(([,v]) => v).map(([k,v]) => (
+            <div key={k} className="flex justify-between border-b border-gray-100 pb-1">
+              <span className="text-gray-600">{k}</span>
+              <span className="font-bold">{v}"</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+</script>
+</body>
+</html>
