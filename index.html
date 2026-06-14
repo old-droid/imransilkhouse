@@ -467,28 +467,10 @@ function renderOrderForm() {
       </div>
       <div class="flex gap-3">
         <button id="saveOrder" class="btn flex-1">Save</button>
-        <button id="printSlip" class="btn-gray btn">${svg('printer',16)} Print Slip</button>
+        <button id="printSlip" class="btn-gray btn">${svg('download',16)} PDF Slips</button>
       </div>
     </div>
     <button id="sendWA" class="btn-green btn w-full no-print">${svg('message-circle',20)} Send WhatsApp</button>
-    <div class="print-only card">
-      <div class="text-center border-b-2 border-gray-800 pb-3 mb-4">
-        <h2 class="text-xl font-bold">${escapeHtml(state.shopName)}</h2>
-        <p class="text-lg font-bold mt-1">Order #${o?o.id:'NEW'}</p>
-        <p class="text-sm font-semibold text-gray-600">${f.suitTypes.map(escapeHtml).join(', ')}</p>
-        <p class="text-xs text-gray-500">PR: ${escapeHtml(f.tailorPR||f.tailorName||'')} &middot; PL: ${escapeHtml(f.tailorPL||'')}</p>
-      </div>
-      <div class="flex justify-center gap-6 text-sm mb-3">
-        <div><span class="text-gray-600">Delivery:</span> <span class="font-bold">${f.deliveryDate||'TBD'}</span></div>
-        <div><span class="text-gray-600">Status:</span> <span class="font-bold">${f.status}</span></div>
-      </div>
-      <div class="border-b border-gray-300 pb-3 mb-3">
-        <p class="font-bold text-xs uppercase text-center">Measurements</p>
-      </div>
-      <div class="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
-        ${Object.entries(f.measurements).filter(([,v])=>v).map(([k,v]) => `<div class="flex justify-between border-b border-gray-100 pb-1"><span class="text-gray-600">${k}</span><span class="font-bold">${v}"</span></div>`).join('')}
-      </div>
-    </div>
   </div>`;
 }
 
@@ -659,9 +641,56 @@ function attachEvents() {
     render();
   };
 
-  // Print slip
+  // Print slip - generate PDF per category
   const ps = document.getElementById('printSlip');
-  if (ps) ps.onclick = () => window.print();
+  if (ps) ps.onclick = () => {
+    const { jsPDF } = window.jspdf;
+    const oid = state.currentOrder ? state.currentOrder.id : 'NEW';
+    const shop = state.shopName;
+    const customer = document.getElementById('fName').value;
+    const phone = document.getElementById('fPhone').value;
+    const delivery = document.getElementById('fDelivery').value || 'TBD';
+    const total = document.getElementById('fTotal').value || '0';
+    const paid = document.getElementById('fPaid').value || '0';
+
+    const meas = {};
+    document.querySelectorAll('.meas-input').forEach(el => { if (el.value) meas[el.dataset.meas] = el.value; });
+
+    const prItems = [], plItems = [];
+    document.querySelectorAll('.suit-check:checked').forEach(el => {
+      if (TEAMS.PR.includes(el.value)) prItems.push(el.value);
+      else plItems.push(el.value);
+    });
+
+    const makeSlip = (team, items, tailor) => {
+      const doc = new jsPDF({ unit: 'mm', format: [80, 120] });
+      let y = 8;
+      doc.setFontSize(7);
+      doc.text(shop, 40, y, { align: 'center' }); y += 4;
+      doc.setFontSize(6);
+      doc.text(`Order #${oid}`, 40, y, { align: 'center' }); y += 3;
+      doc.text(team + ' Slip', 40, y, { align: 'center' }); y += 4;
+      doc.line(4, y, 76, y); y += 3;
+      doc.text(`Customer: ${customer}`, 4, y); y += 3;
+      doc.text(`Phone: ${phone}`, 4, y); y += 3;
+      doc.text(`Tailor: ${tailor}`, 4, y); y += 3;
+      doc.text(`Delivery: ${delivery}`, 4, y); y += 3;
+      doc.text(`Items: ${items.join(', ')}`, 4, y); y += 4;
+      doc.line(4, y, 76, y); y += 3;
+      if (Object.keys(meas).length) {
+        doc.text('Measurements:', 4, y); y += 3;
+        Object.entries(meas).forEach(([k, v]) => { doc.text(`  ${k}: ${v}"`, 4, y); y += 3; });
+      }
+      y += 2;
+      doc.line(4, y, 76, y); y += 3;
+      doc.text(`Total: Rs.${total}`, 4, y); y += 3;
+      doc.text(`Paid: Rs.${paid}`, 4, y);
+      return doc;
+    };
+
+    if (prItems.length) makeSlip('PR', prItems, document.getElementById('fTailorPR').value).save(`PR-${oid}.pdf`);
+    if (plItems.length) makeSlip('PL', plItems, document.getElementById('fTailorPL').value).save(`PL-${oid}.pdf`);
+  };
 
   // Send WhatsApp
   const sw = document.getElementById('sendWA');
