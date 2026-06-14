@@ -396,15 +396,14 @@ function renderOrderForm() {
   const f = o || { customerName:'', phone:'', suitTypes:[], suitType:'', tailorName:'', salesperson:(state.sales[0]||''), total:'', paid:'', deliveryDate:'', measurements:{}, status:'Pending' };
 
   if (!f.suitTypes) f.suitTypes = f.suitType ? [f.suitType] : [];
-  let team = getTeam(f.suitTypes[0]) || 'PR';
-  const teamSuits = TEAMS[team];
   const filtered = state.tailors.filter(t => f.suitTypes.includes(t.suitType));
   const selectedTailor = filtered.find(t => t.name === f.tailorName);
   if (filtered.length && !selectedTailor) {
     f.tailorName = filtered[0].name;
   }
 
-  const suitChecks = teamSuits.map(s => `<label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" class="suit-check" value="${s}" ${f.suitTypes.includes(s)?'checked':''} /><span class="text-sm">${s}</span></label>`).join('');
+  const prChecks = TEAMS.PR.map(s => `<label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" class="suit-check" value="${s}" ${f.suitTypes.includes(s)?'checked':''} /><span class="text-sm">${s}</span></label>`).join('');
+  const plChecks = TEAMS.PL.map(s => `<label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" class="suit-check" value="${s}" ${f.suitTypes.includes(s)?'checked':''} /><span class="text-sm">${s}</span></label>`).join('');
   const tailorOpts = filtered.map(t => `<option value="${t.name}" ${t.name===f.tailorName?'selected':''}>${t.name}</option>`).join('');
   const salesOpts = state.sales.map(s => `<option value="${s}" ${s===f.salesperson?'selected':''}>${s}</option>`).join('');
 
@@ -423,14 +422,13 @@ function renderOrderForm() {
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div><label>Customer Name</label><input id="fName" value="${escapeHtml(f.customerName)}" /></div>
         <div><label>Phone Number</label><input id="fPhone" type="tel" value="${escapeHtml(f.phone)}" /></div>
-        <div><label>Category</label>
-          <select id="fTeam">
-            <option value="PR" ${team==='PR'?'selected':''}>PR</option>
-            <option value="PL" ${team==='PL'?'selected':''}>PL</option>
-          </select>
-        </div>
         <div><label>Suit Types</label>
-          <div id="fSuitChecks" class="flex flex-wrap gap-3 mt-1">${suitChecks}</div>
+          <div id="fSuitChecks" class="space-y-2 mt-1">
+            <p class="text-xs font-bold text-blue-600 uppercase">PR</p>
+            <div class="flex flex-wrap gap-3">${prChecks}</div>
+            <p class="text-xs font-bold text-pink-600 uppercase mt-2">PL</p>
+            <div class="flex flex-wrap gap-3">${plChecks}</div>
+          </div>
         </div>
         <div><label>Tailor</label>
           <select id="fTailor">${tailorOpts}</select>
@@ -617,16 +615,6 @@ function attachEvents() {
       render();
     };
   });
-
-  // Order form - category changes suit checkboxes
-  const ft = document.getElementById('fTeam');
-  if (ft) ft.onchange = () => {
-    const suits = TEAMS[ft.value];
-    const container = document.getElementById('fSuitChecks');
-    container.innerHTML = suits.map(s => `<label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" class="suit-check" value="${s}" /><span class="text-sm">${s}</span></label>`).join('');
-    document.querySelectorAll('.suit-check').forEach(cb => cb.onchange = () => renderOrderFormTailorUpdate([]));
-    renderOrderFormTailorUpdate([]);
-  };
 
   // Suit checkbox changes tailor list
   document.querySelectorAll('.suit-check').forEach(cb => cb.onchange = () => renderOrderFormTailorUpdate([]));
