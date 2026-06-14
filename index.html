@@ -644,55 +644,59 @@ function attachEvents() {
   // Print slip - generate PDF with PR and PL pages
   const ps = document.getElementById('printSlip');
   if (ps) ps.onclick = () => {
-    const { jsPDF } = window.jspdf;
-    const oid = state.currentOrder ? state.currentOrder.id : 'NEW';
-    const shop = state.shopName;
-    const customer = document.getElementById('fName').value;
-    const phone = document.getElementById('fPhone').value;
-    const delivery = document.getElementById('fDelivery').value || 'TBD';
-    const total = document.getElementById('fTotal').value || '0';
-    const paid = document.getElementById('fPaid').value || '0';
+    try {
+      if (typeof window.jspdf === 'undefined' || !window.jspdf.jsPDF) { alert('PDF library not loaded. Check internet connection.'); return; }
+      const { jsPDF } = window.jspdf;
+      const oid = state.currentOrder ? state.currentOrder.id : 'NEW';
+      const shop = state.shopName;
+      const customer = document.getElementById('fName').value;
+      const phone = document.getElementById('fPhone').value;
+      const delivery = document.getElementById('fDelivery').value || 'TBD';
+      const total = document.getElementById('fTotal').value || '0';
+      const paid = document.getElementById('fPaid').value || '0';
 
-    const meas = {};
-    document.querySelectorAll('.meas-input').forEach(el => { if (el.value) meas[el.dataset.meas] = el.value; });
+      const meas = {};
+      document.querySelectorAll('.meas-input').forEach(el => { if (el.value) meas[el.dataset.meas] = el.value; });
 
-    const prItems = [], plItems = [];
-    document.querySelectorAll('.suit-check:checked').forEach(el => {
-      if (TEAMS.PR.includes(el.value)) prItems.push(el.value);
-      else plItems.push(el.value);
-    });
+      const prItems = [], plItems = [];
+      document.querySelectorAll('.suit-check:checked').forEach(el => {
+        if (TEAMS.PR.includes(el.value)) prItems.push(el.value);
+        else plItems.push(el.value);
+      });
 
-    let pageAdded = false;
-    const addSlipPage = (doc, team, items, tailor) => {
-      if (pageAdded) doc.addPage(); else pageAdded = true;
-      let y = 8;
-      doc.setFontSize(7);
-      doc.text(shop, 40, y, { align: 'center' }); y += 4;
-      doc.setFontSize(6);
-      doc.text(`Order #${oid}`, 40, y, { align: 'center' }); y += 3;
-      doc.text(team + ' Slip', 40, y, { align: 'center' }); y += 4;
-      doc.line(4, y, 76, y); y += 3;
-      doc.text(`Customer: ${customer}`, 4, y); y += 3;
-      doc.text(`Phone: ${phone}`, 4, y); y += 3;
-      doc.text(`Tailor: ${tailor}`, 4, y); y += 3;
-      doc.text(`Delivery: ${delivery}`, 4, y); y += 3;
-      doc.text(`Items: ${items.join(', ')}`, 4, y); y += 4;
-      doc.line(4, y, 76, y); y += 3;
-      if (Object.keys(meas).length) {
-        doc.text('Measurements:', 4, y); y += 3;
-        Object.entries(meas).forEach(([k, v]) => { doc.text(`  ${k}: ${v}"`, 4, y); y += 3; });
-      }
-      y += 2;
-      doc.line(4, y, 76, y); y += 3;
-      doc.text(`Total: Rs.${total}`, 4, y); y += 3;
-      doc.text(`Paid: Rs.${paid}`, 4, y);
-    };
+      if (!prItems.length && !plItems.length) { alert('Select at least one suit type.'); return; }
 
-    const doc = new jsPDF({ unit: 'mm', format: [80, 120] });
-    let hasPage = false;
-    if (prItems.length) { addSlipPage(doc, 'PR', prItems, document.getElementById('fTailorPR').value); hasPage = true; }
-    if (plItems.length) { addSlipPage(doc, 'PL', plItems, document.getElementById('fTailorPL').value); hasPage = true; }
-    if (hasPage) doc.save(`slips-${oid}.pdf`);
+      let pageAdded = false;
+      const addSlipPage = (doc, team, items, tailor) => {
+        if (pageAdded) doc.addPage(); else pageAdded = true;
+        let y = 8;
+        doc.setFontSize(8);
+        doc.text(shop, 40, y, { align: 'center' }); y += 5;
+        doc.setFontSize(7);
+        doc.text(`Order #${oid}`, 40, y, { align: 'center' }); y += 4;
+        doc.text(team + ' Slip', 40, y, { align: 'center' }); y += 5;
+        doc.line(4, y, 76, y); y += 4;
+        doc.text(`Customer: ${customer}`, 4, y); y += 4;
+        doc.text(`Phone: ${phone}`, 4, y); y += 4;
+        doc.text(`Tailor: ${tailor}`, 4, y); y += 4;
+        doc.text(`Delivery: ${delivery}`, 4, y); y += 4;
+        doc.text(`Items: ${items.join(', ')}`, 4, y); y += 5;
+        doc.line(4, y, 76, y); y += 4;
+        if (Object.keys(meas).length) {
+          doc.text('Measurements:', 4, y); y += 4;
+          Object.entries(meas).forEach(([k, v]) => { doc.text(`${k}: ${v}"`, 4, y); y += 4; });
+        }
+        y += 2;
+        doc.line(4, y, 76, y); y += 4;
+        doc.text(`Total: Rs.${total}`, 4, y); y += 4;
+        doc.text(`Paid: Rs.${paid}`, 4, y);
+      };
+
+      const doc = new jsPDF({ unit: 'mm', format: [80, 120], compress: true });
+      if (prItems.length) addSlipPage(doc, 'PR', prItems, document.getElementById('fTailorPR').value);
+      if (plItems.length) addSlipPage(doc, 'PL', plItems, document.getElementById('fTailorPL').value);
+      doc.save(`slips-${oid}.pdf`);
+    } catch(e) { alert('PDF error: ' + e.message); }
   };
 
   // Send WhatsApp
