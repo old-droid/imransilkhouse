@@ -641,7 +641,7 @@ function attachEvents() {
     render();
   };
 
-  // Print slip - generate PDF per category
+  // Print slip - generate PDF with PR and PL pages
   const ps = document.getElementById('printSlip');
   if (ps) ps.onclick = () => {
     const { jsPDF } = window.jspdf;
@@ -662,8 +662,9 @@ function attachEvents() {
       else plItems.push(el.value);
     });
 
-    const makeSlip = (team, items, tailor) => {
-      const doc = new jsPDF({ unit: 'mm', format: [80, 120] });
+    let pageAdded = false;
+    const addSlipPage = (doc, team, items, tailor) => {
+      if (pageAdded) doc.addPage(); else pageAdded = true;
       let y = 8;
       doc.setFontSize(7);
       doc.text(shop, 40, y, { align: 'center' }); y += 4;
@@ -685,11 +686,13 @@ function attachEvents() {
       doc.line(4, y, 76, y); y += 3;
       doc.text(`Total: Rs.${total}`, 4, y); y += 3;
       doc.text(`Paid: Rs.${paid}`, 4, y);
-      return doc;
     };
 
-    if (prItems.length) makeSlip('PR', prItems, document.getElementById('fTailorPR').value).save(`PR-${oid}.pdf`);
-    if (plItems.length) makeSlip('PL', plItems, document.getElementById('fTailorPL').value).save(`PL-${oid}.pdf`);
+    const doc = new jsPDF({ unit: 'mm', format: [80, 120] });
+    let hasPage = false;
+    if (prItems.length) { addSlipPage(doc, 'PR', prItems, document.getElementById('fTailorPR').value); hasPage = true; }
+    if (plItems.length) { addSlipPage(doc, 'PL', plItems, document.getElementById('fTailorPL').value); hasPage = true; }
+    if (hasPage) doc.save(`slips-${oid}.pdf`);
   };
 
   // Send WhatsApp
