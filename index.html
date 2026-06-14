@@ -395,13 +395,14 @@ function renderOrderForm() {
   const o = state.currentOrder;
   const f = o || { customerName:'', phone:'', suitType:ALL_SUIT_TYPES[0], tailorName:'', salesperson:(state.sales[0]||''), total:'', paid:'', deliveryDate:'', measurements:{}, status:'Pending' };
 
-  const team = getTeam(f.suitType);
+  let team = getTeam(f.suitType) || 'PR';
+  const teamSuits = TEAMS[team];
   const filtered = state.tailors.filter(t => t.suitType === f.suitType);
   if (filtered.length && !filtered.find(t => t.name === f.tailorName)) {
     f.tailorName = filtered[0].name;
   }
 
-  const suitOpts = ALL_SUIT_TYPES.map(s => `<option value="${s}" ${s===f.suitType?'selected':''}>${s}</option>`).join('');
+  const suitOpts = teamSuits.map(s => `<option value="${s}" ${s===f.suitType?'selected':''}>${s}</option>`).join('');
   const tailorOpts = filtered.map(t => `<option value="${t.name}" ${t.name===f.tailorName?'selected':''}>${t.name}</option>`).join('');
   const salesOpts = state.sales.map(s => `<option value="${s}" ${s===f.salesperson?'selected':''}>${s}</option>`).join('');
 
@@ -420,6 +421,12 @@ function renderOrderForm() {
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div><label>Customer Name</label><input id="fName" value="${escapeHtml(f.customerName)}" /></div>
         <div><label>Phone Number</label><input id="fPhone" type="tel" value="${escapeHtml(f.phone)}" /></div>
+        <div><label>Category</label>
+          <select id="fTeam">
+            <option value="PR" ${team==='PR'?'selected':''}>PR</option>
+            <option value="PL" ${team==='PL'?'selected':''}>PL</option>
+          </select>
+        </div>
         <div><label>Suit Type</label>
           <select id="fSuitType">${suitOpts}</select>
         </div>
@@ -608,6 +615,15 @@ function attachEvents() {
       render();
     };
   });
+
+  // Order form - category changes suit type options
+  const ft = document.getElementById('fTeam');
+  if (ft) ft.onchange = () => {
+    const suits = TEAMS[ft.value];
+    const suitSel = document.getElementById('fSuitType');
+    suitSel.innerHTML = suits.map(s => `<option value="${s}">${s}</option>`).join('');
+    renderOrderFormTailorUpdate(suits[0]);
+  };
 
   // Order form - suit type changes tailor
   const fs = document.getElementById('fSuitType');
