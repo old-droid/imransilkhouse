@@ -307,7 +307,7 @@ function renderDashboard() {
         <div class="flex items-center gap-2">
           <span class="font-bold">#${o.id}</span>
           <span class="font-semibold truncate">${escapeHtml(o.customerName)}</span>
-          <span class="text-xs text-gray-400">${escapeHtml(o.suitType||'')}</span>
+          <span class="text-xs text-gray-400">${escapeHtml(o.suitTypes ? o.suitTypes.join(', ') : (o.suitType||''))}</span>
         </div>
         <p class="text-xs text-gray-400 truncate">${escapeHtml(o.phone)} &middot; ${escapeHtml(o.tailorName)} &middot; ${escapeHtml(o.salesperson)}</p>
         <p class="text-xs text-gray-400">Delivery: ${o.deliveryDate||'N/A'}</p>
@@ -393,16 +393,18 @@ function renderStaff() {
 
 function renderOrderForm() {
   const o = state.currentOrder;
-  const f = o || { customerName:'', phone:'', suitType:ALL_SUIT_TYPES[0], tailorName:'', salesperson:(state.sales[0]||''), total:'', paid:'', deliveryDate:'', measurements:{}, status:'Pending' };
+  const f = o || { customerName:'', phone:'', suitTypes:[], suitType:'', tailorName:'', salesperson:(state.sales[0]||''), total:'', paid:'', deliveryDate:'', measurements:{}, status:'Pending' };
 
-  let team = getTeam(f.suitType) || 'PR';
+  if (!f.suitTypes) f.suitTypes = f.suitType ? [f.suitType] : [];
+  let team = getTeam(f.suitTypes[0]) || 'PR';
   const teamSuits = TEAMS[team];
-  const filtered = state.tailors.filter(t => t.suitType === f.suitType);
-  if (filtered.length && !filtered.find(t => t.name === f.tailorName)) {
+  const filtered = state.tailors.filter(t => f.suitTypes.includes(t.suitType));
+  const selectedTailor = filtered.find(t => t.name === f.tailorName);
+  if (filtered.length && !selectedTailor) {
     f.tailorName = filtered[0].name;
   }
 
-  const suitOpts = teamSuits.map(s => `<option value="${s}" ${s===f.suitType?'selected':''}>${s}</option>`).join('');
+  const suitChecks = teamSuits.map(s => `<label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" class="suit-check" value="${s}" ${f.suitTypes.includes(s)?'checked':''} /><span class="text-sm">${s}</span></label>`).join('');
   const tailorOpts = filtered.map(t => `<option value="${t.name}" ${t.name===f.tailorName?'selected':''}>${t.name}</option>`).join('');
   const salesOpts = state.sales.map(s => `<option value="${s}" ${s===f.salesperson?'selected':''}>${s}</option>`).join('');
 
@@ -427,8 +429,8 @@ function renderOrderForm() {
             <option value="PL" ${team==='PL'?'selected':''}>PL</option>
           </select>
         </div>
-        <div><label>Suit Type</label>
-          <select id="fSuitType">${suitOpts}</select>
+        <div><label>Suit Types</label>
+          <div id="fSuitChecks" class="flex flex-wrap gap-3 mt-1">${suitChecks}</div>
         </div>
         <div><label>Tailor</label>
           <select id="fTailor">${tailorOpts}</select>
@@ -465,7 +467,7 @@ function renderOrderForm() {
       <div class="text-center border-b-2 border-gray-800 pb-3 mb-4">
         <h2 class="text-xl font-bold">${escapeHtml(state.shopName)}</h2>
         <p class="text-lg font-bold mt-1">Order #${o?o.id:'NEW'}</p>
-        <p class="text-sm font-semibold text-gray-600">${escapeHtml(f.suitType)}</p>
+        <p class="text-sm font-semibold text-gray-600">${f.suitTypes.map(escapeHtml).join(', ')}</p>
       </div>
       <div class="flex justify-center gap-6 text-sm mb-3">
         <div><span class="text-gray-600">Delivery:</span> <span class="font-bold">${f.deliveryDate||'TBD'}</span></div>
@@ -616,27 +618,29 @@ function attachEvents() {
     };
   });
 
-  // Order form - category changes suit type options
+  // Order form - category changes suit checkboxes
   const ft = document.getElementById('fTeam');
   if (ft) ft.onchange = () => {
     const suits = TEAMS[ft.value];
-    const suitSel = document.getElementById('fSuitType');
-    suitSel.innerHTML = suits.map(s => `<option value="${s}">${s}</option>`).join('');
-    renderOrderFormTailorUpdate(suits[0]);
+    const container = document.getElementById('fSuitChecks');
+    container.innerHTML = suits.map(s => `<label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" class="suit-check" value="${s}" /><span class="text-sm">${s}</span></label>`).join('');
+    document.querySelectorAll('.suit-check').forEach(cb => cb.onchange = () => renderOrderFormTailorUpdate([]));
+    renderOrderFormTailorUpdate([]);
   };
 
-  // Order form - suit type changes tailor
-  const fs = document.getElementById('fSuitType');
-  if (fs) fs.onchange = () => { renderOrderFormTailorUpdate(fs.value); };
+  // Suit checkbox changes tailor list
+  document.querySelectorAll('.suit-check').forEach(cb => cb.onchange = () => renderOrderFormTailorUpdate([]));
 
   // Save order
   const so = document.getElementById('saveOrder');
   if (so) so.onclick = async () => {
     const o = state.currentOrder || {};
+    const checked = Array.from(document.querySelectorAll('.suit-check:checked')).map(el => el.value);
     const data = {
       customerName: document.getElementById('fName').value,
       phone: document.getElementById('fPhone').value,
-      suitType: document.getElementById('fSuitType').value,
+      suitTypes: checked,
+      suitType: checked.join(', '),
       tailorName: document.getElementById('fTailor').value,
       salesperson: document.getElementById('fSales').value,
       deliveryDate: document.getElementById('fDelivery').value,
@@ -672,13 +676,13 @@ function attachEvents() {
   if (sw) sw.onclick = () => {
     const name = document.getElementById('fName').value;
     const phone = document.getElementById('fPhone').value;
-    const suit = document.getElementById('fSuitType').value;
+    const items = Array.from(document.querySelectorAll('.suit-check:checked')).map(el => el.value).join(', ');
     const tailor = document.getElementById('fTailor').value;
     const delivery = document.getElementById('fDelivery').value || 'TBD';
     const total = document.getElementById('fTotal').value || '0';
     const paid = document.getElementById('fPaid').value || '0';
     const oid = state.currentOrder ? state.currentOrder.id : 'NEW';
-    const msg = `Hello! by ${state.shopName} Order #${oid}, ${suit}, Tailor: ${tailor}, Delivery: ${delivery}, Total: Rs.${total}, Advance: Rs.${paid}.`;
+    const msg = `Hello! by ${state.shopName} Order #${oid}, Items: ${items}, Tailor: ${tailor}, Delivery: ${delivery}, Total: Rs.${total}, Advance: Rs.${paid}.`;
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
@@ -787,10 +791,11 @@ function attachEvents() {
   };
 }
 
-function renderOrderFormTailorUpdate(suitType) {
+function renderOrderFormTailorUpdate(suitTypes) {
   const sel = document.getElementById('fTailor');
   if (!sel) return;
-  const filtered = state.tailors.filter(t => t.suitType === suitType);
+  if (!suitTypes || !suitTypes.length) suitTypes = Array.from(document.querySelectorAll('.suit-check:checked')).map(el => el.value);
+  const filtered = state.tailors.filter(t => suitTypes.includes(t.suitType));
   sel.innerHTML = filtered.map(t => `<option value="${t.name}">${t.name}</option>`).join('');
 }
 
