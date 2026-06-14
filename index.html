@@ -388,19 +388,21 @@ function renderStaff() {
 
 function renderOrderForm() {
   const o = state.currentOrder;
-  const f = o || { customerName:'', phone:'', suitTypes:[], suitType:'', tailorName:'', salesperson:(state.sales[0]||''), total:'', paid:'', deliveryDate:'', measurements:{}, status:'Pending' };
+  const f = o || { customerName:'', phone:'', suitTypes:[], suitType:'', tailorPR:'', tailorPL:'', tailorName:'', salesperson:(state.sales[0]||''), total:'', paid:'', deliveryDate:'', measurements:{}, status:'Pending' };
 
   if (!f.suitTypes) f.suitTypes = f.suitType ? [f.suitType] : [];
-  const selectedTeams = [...new Set(f.suitTypes.map(s => getTeam(s)).filter(Boolean))];
-  const filtered = state.tailors.filter(t => selectedTeams.length === 0 || selectedTeams.includes(t.team || getTeam(t.suitType)));
-  const selectedTailor = filtered.find(t => t.name === f.tailorName);
-  if (filtered.length && !selectedTailor) {
-    f.tailorName = filtered[0].name;
-  }
+  if (!f.tailorPR) f.tailorPR = f.tailorName || '';
+  if (!f.tailorPL) f.tailorPL = f.tailorName || '';
+
+  const prTailors = state.tailors.filter(t => (t.team || getTeam(t.suitType)) === 'PR');
+  const plTailors = state.tailors.filter(t => (t.team || getTeam(t.suitType)) === 'PL');
+  const prTailorDefault = prTailors.find(t => t.name === f.tailorPR) ? f.tailorPR : (prTailors[0]?.name || '');
+  const plTailorDefault = plTailors.find(t => t.name === f.tailorPL) ? f.tailorPL : (plTailors[0]?.name || '');
 
   const prChecks = TEAMS.PR.map(s => `<label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" class="suit-check" value="${s}" ${f.suitTypes.includes(s)?'checked':''} /><span class="text-sm">${s}</span></label>`).join('');
   const plChecks = TEAMS.PL.map(s => `<label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" class="suit-check" value="${s}" ${f.suitTypes.includes(s)?'checked':''} /><span class="text-sm">${s}</span></label>`).join('');
-  const tailorOpts = filtered.map(t => `<option value="${t.name}" ${t.name===f.tailorName?'selected':''}>${t.name}</option>`).join('');
+  const prTailorOpts = prTailors.map(t => `<option value="${t.name}" ${t.name===prTailorDefault?'selected':''}>${t.name}</option>`).join('');
+  const plTailorOpts = plTailors.map(t => `<option value="${t.name}" ${t.name===plTailorDefault?'selected':''}>${t.name}</option>`).join('');
   const salesOpts = state.sales.map(s => `<option value="${s}" ${s===f.salesperson?'selected':''}>${s}</option>`).join('');
 
   let measHtml = '';
@@ -418,17 +420,29 @@ function renderOrderForm() {
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div><label>Customer Name</label><input id="fName" value="${escapeHtml(f.customerName)}" /></div>
         <div><label>Phone Number</label><input id="fPhone" type="tel" value="${escapeHtml(f.phone)}" /></div>
-        <div><label>Suit Types</label>
-          <div id="fSuitChecks" class="space-y-2 mt-1">
-            <p class="text-xs font-bold text-blue-600 uppercase">PR</p>
-            <div class="flex flex-wrap gap-3">${prChecks}</div>
-            <p class="text-xs font-bold text-pink-600 uppercase mt-2">PL</p>
-            <div class="flex flex-wrap gap-3">${plChecks}</div>
+        <div class="md:col-span-2"><label>Suit Types</label>
+          <div id="fSuitChecks" class="space-y-3 mt-1">
+            <div class="flex flex-wrap items-start gap-4">
+              <div class="flex-1 min-w-[200px]">
+                <p class="text-xs font-bold text-blue-600 uppercase mb-1">PR</p>
+                <div class="flex flex-wrap gap-3">${prChecks}</div>
+              </div>
+              <div class="w-full md:w-auto">
+                <label class="text-[10px] font-bold text-gray-500 uppercase block mb-1">PR Tailor</label>
+                <select id="fTailorPR" class="min-w-[140px]">${prTailorOpts}</select>
+              </div>
+            </div>
+            <div class="flex flex-wrap items-start gap-4">
+              <div class="flex-1 min-w-[200px]">
+                <p class="text-xs font-bold text-pink-600 uppercase mb-1">PL</p>
+                <div class="flex flex-wrap gap-3">${plChecks}</div>
+              </div>
+              <div class="w-full md:w-auto">
+                <label class="text-[10px] font-bold text-gray-500 uppercase block mb-1">PL Tailor</label>
+                <select id="fTailorPL" class="min-w-[140px]">${plTailorOpts}</select>
+              </div>
+            </div>
           </div>
-        </div>
-        <div><label>Tailor</label>
-          <select id="fTailor">${tailorOpts}</select>
-          ${filtered.length===0?'<p class="text-xs text-red-500 mt-1">No tailor for this suit type</p>':''}
         </div>
         <div><label>Salesperson</label>
           <select id="fSales">${salesOpts}</select>
@@ -462,6 +476,7 @@ function renderOrderForm() {
         <h2 class="text-xl font-bold">${escapeHtml(state.shopName)}</h2>
         <p class="text-lg font-bold mt-1">Order #${o?o.id:'NEW'}</p>
         <p class="text-sm font-semibold text-gray-600">${f.suitTypes.map(escapeHtml).join(', ')}</p>
+        <p class="text-xs text-gray-500">PR: ${escapeHtml(f.tailorPR||f.tailorName||'')} &middot; PL: ${escapeHtml(f.tailorPL||'')}</p>
       </div>
       <div class="flex justify-center gap-6 text-sm mb-3">
         <div><span class="text-gray-600">Delivery:</span> <span class="font-bold">${f.deliveryDate||'TBD'}</span></div>
@@ -604,8 +619,7 @@ function attachEvents() {
     };
   });
 
-  // Suit checkbox changes tailor list
-  document.querySelectorAll('.suit-check').forEach(cb => cb.onchange = () => renderOrderFormTailorUpdate([]));
+  // Suit checkbox changes tailor list (placeholder, tailor dropdowns now per-team)
 
   // Save order
   const so = document.getElementById('saveOrder');
@@ -617,7 +631,9 @@ function attachEvents() {
       phone: document.getElementById('fPhone').value,
       suitTypes: checked,
       suitType: checked.join(', '),
-      tailorName: document.getElementById('fTailor').value,
+      tailorPR: document.getElementById('fTailorPR').value,
+      tailorPL: document.getElementById('fTailorPL').value,
+      tailorName: document.getElementById('fTailorPR').value,
       salesperson: document.getElementById('fSales').value,
       deliveryDate: document.getElementById('fDelivery').value,
       status: document.getElementById('fStatus').value,
@@ -653,7 +669,9 @@ function attachEvents() {
     const name = document.getElementById('fName').value;
     const phone = document.getElementById('fPhone').value;
     const items = Array.from(document.querySelectorAll('.suit-check:checked')).map(el => el.value).join(', ');
-    const tailor = document.getElementById('fTailor').value;
+    const tailorPR = document.getElementById('fTailorPR').value;
+    const tailorPL = document.getElementById('fTailorPL').value;
+    const tailor = tailorPR + (tailorPR && tailorPL ? ', ' : '') + tailorPL;
     const delivery = document.getElementById('fDelivery').value || 'TBD';
     const total = document.getElementById('fTotal').value || '0';
     const paid = document.getElementById('fPaid').value || '0';
@@ -765,14 +783,6 @@ function attachEvents() {
       alert('Invalid backup file: '+err.message);
     }
   };
-}
-
-function renderOrderFormTailorUpdate(suitTypes) {
-  const sel = document.getElementById('fTailor');
-  if (!sel) return;
-  if (!suitTypes || !suitTypes.length) suitTypes = Array.from(document.querySelectorAll('.suit-check:checked')).map(el => el.value);
-  const filtered = state.tailors.filter(t => suitTypes.includes(t.suitType));
-  sel.innerHTML = filtered.map(t => `<option value="${t.name}">${t.name}</option>`).join('');
 }
 
 // ----- INIT -----
