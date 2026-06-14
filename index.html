@@ -3,31 +3,29 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Imran Silk House</title>
+<title>Imran Collections</title>
 <script src="https://cdn.tailwindcss.com"></script>
-<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<script src="https://unpkg.com/lucide@latest"></script>
 <script src="https://cdn.jsdelivr.net/npm/fuse.js@6.6.2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
+*{box-sizing:border-box}
 body{font-family:'Inter',sans-serif;background:#f0f2f5;color:#1a1a2e;margin:0;padding:0}
 .card{background:white;border-radius:8px;border:1px solid #e0e0e0;padding:16px}
-input,select{background:white;border:1px solid #d0d0d0;padding:10px 12px;border-radius:6px;font-size:14px;outline:none;width:100%;box-sizing:border-box}
+input,select{background:white;border:1px solid #d0d0d0;padding:10px 12px;border-radius:6px;font-size:14px;outline:none;width:100%}
 input:focus,select:focus{border-color:#1a73e8}
-.btn{background:#1a73e8;color:white;border:none;padding:10px 24px;border-radius:6px;font-weight:600;cursor:pointer;font-size:14px}
+.btn{background:#1a73e8;color:white;border:none;padding:10px 24px;border-radius:6px;font-weight:600;cursor:pointer;font-size:14px;display:inline-flex;align-items:center;justify-content:center;gap:6px}
 .btn:hover{background:#1557b0}
-.btn-danger{background:#dc3545}
-.btn-danger:hover{background:#b02a37}
-.btn-gray{background:#6c757d;color:white}
-.btn-gray:hover{background:#5a6268}
-.btn-outline{background:transparent;border:1px solid #d0d0d0;color:#1a1a2e}
-.btn-outline:hover{background:#f0f0f0}
-.btn-green{background:#198754;color:white}
-.btn-green:hover{background:#146c43}
+.btn-danger{background:#dc3545}.btn-danger:hover{background:#b02a37}
+.btn-gray{background:#6c757d;color:white}.btn-gray:hover{background:#5a6268}
+.btn-outline{background:transparent;border:1px solid #d0d0d0;color:#1a1a2e}.btn-outline:hover{background:#f0f0f0}
+.btn-green{background:#198754;color:white}.btn-green:hover{background:#146c43}
 label{font-size:11px;font-weight:700;color:#666;text-transform:uppercase;display:block;margin-bottom:4px}
-.card-hover:hover{box-shadow:0 2px 8px rgba(0,0,0,0.1)}
+.tab-btn{padding:8px 16px;border:none;background:transparent;cursor:pointer;font-weight:600;font-size:13px;border-radius:6px}
+.tab-btn.active{background:white;box-shadow:0 1px 4px rgba(0,0,0,0.1);color:#1a73e8}
+.tab-btn:not(.active){color:#999}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700}
+.badge-pr{background:#dbeafe;color:#1d4ed8}
+.badge-pl{background:#fce7f3;color:#be185d}
 @media print{.no-print{display:none!important}.print-only{display:block!important}body{background:white;color:black}}
 .print-only{display:none}
 ::-webkit-scrollbar{width:4px}
@@ -36,421 +34,769 @@ label{font-size:11px;font-weight:700;color:#666;text-transform:uppercase;display
 </style>
 </head>
 <body>
-<div id="root"></div>
-<script type="text/babel">
-const { useState, useEffect, useMemo } = React;
-
-const SUIT_TYPES = ["Formal Coat Suits","Tuxedos","Blazers","Prince Coats","Premium Sherwanis","Jodhpuri Suits","Nawabi Suits","Designer Kurta Sets","Pathani Suits","Shoes"];
-
+<div id="app"></div>
+<script>
+// ----- CONSTANTS -----
+const TEAMS = {
+  PR: ["Sherwani","Blazer","Tuxedo","Jacket","Jodhpuri","Pagadi","Jutii"],
+  PL: ["Shirt","Pant","Kurta/pyjamas","Pathani","Puna pant"]
+};
+const ALL_SUIT_TYPES = [...TEAMS.PR, ...TEAMS.PL];
 const MEASUREMENTS = ["Length","Chest","Waist","Hip","Shoulder","Sleeve","Collar","Bottom"];
+const DB_NAME = 'ImranSilkHouse';
+const DB_VER = 2;
 
-const getNextId = () => {
-  let c = parseInt(localStorage.getItem('imran_order_counter') || '0');
-  c++;
-  localStorage.setItem('imran_order_counter', c.toString());
-  return c;
+// ----- INDEXEDDB WRAPPER -----
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const r = indexedDB.open(DB_NAME, DB_VER);
+    r.onupgradeneeded = () => {
+      const db = r.result;
+      if (!db.objectStoreNames.contains('orders')) db.createObjectStore('orders', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('tailors')) db.createObjectStore('tailors', { keyPath: 'id', autoIncrement: true });
+      if (!db.objectStoreNames.contains('sales')) db.createObjectStore('sales', { keyPath: 'id', autoIncrement: true });
+    };
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+  });
+}
+
+function dbGet(store, key) {
+  return openDB().then(db => new Promise((resolve, reject) => {
+    const t = db.transaction(store, 'readonly');
+    const r = t.objectStore(store).get(key);
+    r.onsuccess = () => { resolve(r.result ? r.result.value : null); db.close(); };
+    r.onerror = () => { reject(r.error); db.close(); };
+  }));
+}
+
+function dbSet(store, key, val) {
+  return openDB().then(db => new Promise((resolve, reject) => {
+    const t = db.transaction(store, 'readwrite');
+    const r = t.objectStore(store).put({ key, value: val });
+    r.onsuccess = () => { resolve(); db.close(); };
+    r.onerror = () => { reject(r.error); db.close(); };
+  }));
+}
+
+function dbGetAll(store) {
+  return openDB().then(db => new Promise((resolve, reject) => {
+    const t = db.transaction(store, 'readonly');
+    const r = t.objectStore(store).getAll();
+    r.onsuccess = () => { resolve(r.result.map(x => x.value)); db.close(); };
+    r.onerror = () => { reject(r.error); db.close(); };
+  }));
+}
+
+function dbAdd(store, val) {
+  return openDB().then(db => new Promise((resolve, reject) => {
+    const t = db.transaction(store, 'readwrite');
+    const r = t.objectStore(store).add({ value: val });
+    r.onsuccess = () => { resolve(r.result); db.close(); };
+    r.onerror = () => { reject(r.error); db.close(); };
+  }));
+}
+
+function dbDelete(store, key) {
+  return openDB().then(db => new Promise((resolve, reject) => {
+    const t = db.transaction(store, 'readwrite');
+    const r = t.objectStore(store).delete(key);
+    r.onsuccess = () => { resolve(); db.close(); };
+    r.onerror = () => { reject(r.error); db.close(); };
+  }));
+}
+
+function dbClear(store) {
+  return openDB().then(db => new Promise((resolve, reject) => {
+    const t = db.transaction(store, 'readwrite');
+    const r = t.objectStore(store).clear();
+    r.onsuccess = () => { resolve(); db.close(); };
+    r.onerror = () => { reject(r.error); db.close(); };
+  }));
+}
+
+function dbPutKey(store, obj) {
+  return openDB().then(db => new Promise((resolve, reject) => {
+    const t = db.transaction(store, 'readwrite');
+    const r = t.objectStore(store).put(obj);
+    r.onsuccess = () => { resolve(r.result); db.close(); };
+    r.onerror = () => { reject(r.error); db.close(); };
+  }));
+}
+
+// ----- STATE -----
+let state = {
+  role: null,
+  pass: '',
+  isAuth: false,
+  view: 'dashboard',
+  orders: [],
+  tailors: [],
+  sales: ['Rahman','Tanzim'],
+  shopName: 'IMRAN SILK HOUSE',
+  currentOrder: null,
+  searchQuery: '',
+  loginPass: '',
+  orderCounter: 0,
+  staffTab: 'tailors'
 };
 
-const Icon = ({ name, className, size = 20 }) => {
-  useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [name]);
-  return <i data-lucide={name} className={className} style={{ width: size, height: size }}></i>;
-};
+let appEl = document.getElementById('app');
 
-const App = () => {
-  const [role, setRole] = useState(null);
-  const [pass, setPass] = useState(localStorage.getItem('imran_owner_pass') || '');
-  const [isAuth, setIsAuth] = useState(false);
-  const [view, setView] = useState('dashboard');
-  const [orders, setOrders] = useState(() => JSON.parse(localStorage.getItem('imran_orders') || '[]'));
-  const [tailorList, setTailorList] = useState(() => JSON.parse(localStorage.getItem('imran_tailors') || '[]'));
-  const [salespersons, setSalespersons] = useState(() => JSON.parse(localStorage.getItem('imran_sales') || '["Rahman","Tanzim"]'));
-  const [shopName, setShopName] = useState(localStorage.getItem('imran_shop_name') || 'IMRAN SILK HOUSE');
-  const [currentOrder, setCurrentOrder] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [loginPass, setLoginPass] = useState('');
+// ----- HELPERS -----
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 
-  useEffect(() => { localStorage.setItem('imran_orders', JSON.stringify(orders)); }, [orders]);
-  useEffect(() => { localStorage.setItem('imran_tailors', JSON.stringify(tailorList)); }, [tailorList]);
-  useEffect(() => { localStorage.setItem('imran_sales', JSON.stringify(salespersons)); }, [salespersons]);
-  useEffect(() => { localStorage.setItem('imran_owner_pass', pass); }, [pass]);
-  useEffect(() => { localStorage.setItem('imran_shop_name', shopName); }, [shopName]);
+function today() { return new Date().toISOString().split('T')[0]; }
 
-  const stats = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
-    const todayOrders = orders.filter(o => o.date === today);
-    const totalRevenue = orders.reduce((acc, o) => acc + (parseFloat(o.total) || 0), 0);
-    const totalPaid = orders.reduce((acc, o) => acc + (parseFloat(o.paid) || 0), 0);
-    return { todayOrders, totalToday: todayOrders.length, totalOrders: orders.length, totalRevenue, totalPaid, totalPending: totalRevenue - totalPaid };
-  }, [orders]);
+function formatDate(d) {
+  if (!d) return '';
+  const p = d.split('-');
+  return p[2]+'/'+p[1]+'/'+p[0];
+}
 
-  const filteredOrders = useMemo(() => {
-    if (!searchQuery) return [...orders].reverse();
-    const fuse = new Fuse(orders, { keys: ['customerName','phone','tailorName','salesperson','suitType'], threshold: 0.3 });
-    return fuse.search(searchQuery).map(r => r.item);
-  }, [orders, searchQuery]);
+function getTeam(suitType) {
+  if (TEAMS.PR.includes(suitType)) return 'PR';
+  if (TEAMS.PL.includes(suitType)) return 'PL';
+  return '';
+}
 
-  const downloadTodayPDF = () => {
+function statusClass(s) {
+  if (s==='Pending') return 'bg-yellow-100 text-yellow-700';
+  if (s==='Stitched') return 'bg-blue-100 text-blue-700';
+  if (s==='Ready') return 'bg-green-100 text-green-700';
+  return 'bg-gray-100 text-gray-500';
+}
+
+function svg(name, size) {
+  const icons = {
+    home: '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
+    users: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+    plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+    search: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+    'bar-chart': '<line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/>',
+    settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+    'log-out': '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
+    printer: '<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
+    'message-circle': '<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>',
+    'file-text': '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>',
+    'download': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+    'upload': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
+    'trash-2': '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>',
+    'arrow-left': '<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>',
+    'chevron-right': '<polyline points="9 18 15 12 9 6"/>'
+  };
+  return '<svg xmlns="http://www.w3.org/2000/svg" width="'+size+'" height="'+size+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+(icons[name]||'')+'</svg>';
+}
+
+// ----- LOAD / SAVE DATA -----
+async function loadData() {
+  try {
+    state.pass = localStorage.getItem('imran_owner_pass') || '';
+    state.shopName = localStorage.getItem('imran_shop_name') || 'IMRAN SILK HOUSE';
+    state.orderCounter = parseInt(localStorage.getItem('imran_order_counter') || '0', 10);
+    state.orders = (await dbGetAll('orders')) || [];
+    state.tailors = (await dbGetAll('tailors')) || [];
+    let s = await dbGetAll('sales');
+    state.sales = s.length ? s : ['Rahman','Tanzim'];
+  } catch(e) { console.error('Load error', e); }
+}
+
+async function saveOrders() {
+  await dbClear('orders');
+  for (const o of state.orders) {
+    await dbPutKey('orders', { id: o.id, value: o });
+  }
+}
+
+async function saveTailors() {
+  await dbClear('tailors');
+  for (const t of state.tailors) {
+    await dbAdd('tailors', t);
+  }
+}
+
+async function saveSales() {
+  await dbClear('sales');
+  for (const s of state.sales) {
+    await dbAdd('sales', s);
+  }
+}
+
+function savePass() { localStorage.setItem('imran_owner_pass', state.pass); return Promise.resolve(); }
+function saveShopName() { localStorage.setItem('imran_shop_name', state.shopName); return Promise.resolve(); }
+function saveCounter() { localStorage.setItem('imran_order_counter', String(state.orderCounter)); return Promise.resolve(); }
+
+function getNextId() {
+  state.orderCounter++;
+  saveCounter();
+  return state.orderCounter;
+}
+
+// ----- RENDER -----
+function render() {
+  if (!state.isAuth) { renderLogin(); return; }
+  let html = '';
+  html += '<div class="min-h-screen flex flex-col" style="padding-bottom:80px">';
+  html += renderHeader();
+  html += '<main class="px-4 py-6 max-w-4xl mx-auto w-full">';
+  if (state.view === 'dashboard') html += renderDashboard();
+  else if (state.view === 'edit-order') html += renderOrderForm();
+  else if (state.view === 'staff') html += renderStaff();
+  else if (state.view === 'reports' && state.role === 'owner') html += renderReports();
+  else if (state.view === 'settings' && state.role === 'owner') html += renderSettings();
+  else { state.view = 'dashboard'; html += renderDashboard(); }
+  html += '</main>';
+  html += renderNav();
+  html += '</div>';
+  appEl.innerHTML = html;
+  attachEvents();
+}
+
+function renderLogin() {
+  const hasPass = !!state.pass;
+  appEl.innerHTML = `
+    <div class="min-h-screen flex flex-col items-center justify-center" style="background:#f0f2f5">
+      <div class="text-center mb-8">
+        <h1 class="text-3xl font-bold" style="color:#1a1a2e">IMRAN COLLECTIONS</h1>
+        <p class="text-sm text-gray-500 mt-1">Tailoring Management</p>
+      </div>
+      <div class="bg-white rounded-lg border border-gray-200 p-8 w-full max-w-sm space-y-4">
+        <div>
+          <label>Owner Password</label>
+          <input type="password" id="loginPass" placeholder="${hasPass?'Enter password':'Set password'}" value="${escapeHtml(state.loginPass)}" />
+        </div>
+        <button class="btn w-full" id="btnOwnerLogin">${hasPass?'Login as Owner':'Set Password & Login'}</button>
+        ${hasPass ? '<button class="btn-outline btn w-full" id="btnSalesLogin">Enter as Sales (Guest)</button>' : ''}
+      </div>
+    </div>`;
+  document.getElementById('btnOwnerLogin').onclick = () => {
+    const v = document.getElementById('loginPass').value;
+    if (!state.pass) { state.pass = v; savePass(); state.role = 'owner'; state.isAuth = true; render(); return; }
+    if (v === state.pass) { state.role = 'owner'; state.isAuth = true; render(); return; }
+    alert('Wrong password');
+  };
+  const sb = document.getElementById('btnSalesLogin');
+  if (sb) sb.onclick = () => { state.role = 'sales'; state.isAuth = true; render(); };
+}
+
+function renderHeader() {
+  return `<header class="bg-white border-b border-gray-200 px-4 py-3 flex justify-between items-center sticky top-0 z-50 no-print">
+    <div class="flex items-center gap-3">
+      <h1 class="text-lg font-bold" style="color:#1a1a2e">IMRAN COLLECTIONS</h1>
+      <span class="badge ${state.role==='owner'?'badge-pr':'badge-pl'}">${state.role}</span>
+    </div>
+    <button id="btnLogout" class="text-gray-400 hover:text-gray-600">${svg('log-out',18)}</button>
+  </header>`;
+}
+
+function renderDashboard() {
+  const to = state.orders.filter(o => o.date === today());
+  const totalRevenue = state.orders.reduce((a,o) => a + (parseFloat(o.total)||0), 0);
+  const totalPaid = state.orders.reduce((a,o) => a + (parseFloat(o.paid)||0), 0);
+  const totalPending = totalRevenue - totalPaid;
+
+  let list = state.searchQuery ? new Fuse(state.orders, { keys: ['customerName','phone','tailorName','salesperson','suitType','id'], threshold: 0.3 }).search(state.searchQuery).map(r => r.item) : [...state.orders].reverse();
+
+  let ordersHtml = '';
+  for (const o of list) {
+    ordersHtml += `<div class="card card-hover flex justify-between items-center cursor-pointer" data-order-id="${o.id}">
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2">
+          <span class="font-bold">#${o.id}</span>
+          <span class="font-semibold truncate">${escapeHtml(o.customerName)}</span>
+          <span class="text-xs text-gray-400">${escapeHtml(o.suitType||'')}</span>
+        </div>
+        <p class="text-xs text-gray-400 truncate">${escapeHtml(o.phone)} &middot; ${escapeHtml(o.tailorName)} &middot; ${escapeHtml(o.salesperson)}</p>
+        <p class="text-xs text-gray-400">Delivery: ${o.deliveryDate||'N/A'}</p>
+      </div>
+      <div class="text-right ml-4 flex-shrink-0">
+        <p class="font-bold" style="color:#1a73e8">Rs.${o.total}</p>
+        <span class="badge ${statusClass(o.status)}">${o.status}</span>
+      </div>
+    </div>`;
+  }
+
+  return `<div class="space-y-6">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div class="card text-center"><p class="text-xs text-gray-500 uppercase font-bold">Today</p><p class="text-2xl font-bold">${to.length}</p></div>
+      <div class="card text-center"><p class="text-xs text-gray-500 uppercase font-bold">Total</p><p class="text-2xl font-bold">${state.orders.length}</p></div>
+      ${state.role==='owner'?'<div class="card text-center"><p class="text-xs text-gray-500 uppercase font-bold">Revenue</p><p class="text-2xl font-bold" style="color:#1a73e8">Rs.'+totalRevenue+'</p></div>':''}
+      <div class="card text-center"><p class="text-xs text-gray-500 uppercase font-bold">Pending</p><p class="text-2xl font-bold" style="color:#dc3545">Rs.${totalPending}</p></div>
+    </div>
+    <div class="flex gap-2 no-print">
+      <div class="relative flex-1">
+        <input id="searchInput" placeholder="Search by name, phone, order ID, staff..." value="${escapeHtml(state.searchQuery)}" style="padding-left:36px" />
+        <span style="position:absolute;left:10px;top:10px;color:#aaa">${svg('search',16)}</span>
+      </div>
+      <button id="btnPDF" class="btn-gray btn text-sm">${svg('file-text',16)} PDF</button>
+    </div>
+    <div class="space-y-2">
+      ${ordersHtml||'<p class="text-center text-gray-400 py-8">No orders found</p>'}
+    </div>
+  </div>`;
+}
+
+function renderStaff() {
+  let tailorsHtml = '';
+  for (let i = 0; i < state.tailors.length; i++) {
+    const t = state.tailors[i];
+    const team = getTeam(t.suitType);
+    tailorsHtml += `<div class="card flex justify-between items-center">
+      <div>
+        <span class="font-semibold">${escapeHtml(t.name)}</span>
+        <span class="badge ${team==='PR'?'badge-pr':'badge-pl'} ml-2">${team}</span>
+        <span class="text-xs text-gray-400 ml-1">${escapeHtml(t.suitType)}</span>
+      </div>
+      <button class="del-tailor text-red-400 hover:text-red-600" data-idx="${i}">${svg('trash-2',16)}</button>
+    </div>`;
+  }
+
+  let salesHtml = '';
+  for (let i = 0; i < state.sales.length; i++) {
+    salesHtml += `<div class="card flex justify-between items-center">
+      <span class="font-semibold">${escapeHtml(state.sales[i])}</span>
+      <button class="del-sales text-red-400 hover:text-red-600" data-idx="${i}">${svg('trash-2',16)}</button>
+    </div>`;
+  }
+
+  const teamOpts = `<option value="PR">PR</option><option value="PL">PL</option>`;
+  const prOpts = TEAMS.PR.map(s => `<option value="${s}">${s}</option>`).join('');
+  const plOpts = TEAMS.PL.map(s => `<option value="${s}">${s}</option>`).join('');
+
+  return `<div class="space-y-6 max-w-md mx-auto">
+    <h2 class="text-xl font-bold">Staff Control</h2>
+    <div class="flex gap-2" style="background:#f0f2f5;padding:4px;border-radius:8px">
+      <button class="tab-btn ${state.staffTab==='tailors'?'active':''}" id="tabTailors" style="flex:1">Tailors</button>
+      <button class="tab-btn ${state.staffTab==='sales'?'active':''}" id="tabSales" style="flex:1">Sales</button>
+    </div>
+    <div id="staffTailors" class="space-y-4" ${state.staffTab==='sales'?'style="display:none"':''}>
+      <div class="flex gap-2">
+        <input id="tailorName" placeholder="Tailor name..." style="flex:1" />
+        <select id="tailorTeam" style="width:100px">${teamOpts}</select>
+        <select id="tailorSuit" style="flex:1">${prOpts}</select>
+        <button id="addTailor" class="btn">${svg('plus',18)}</button>
+      </div>
+      ${tailorsHtml||'<p class="text-sm text-gray-400 text-center py-4">No tailors added yet</p>'}
+    </div>
+    <div id="staffSales" class="space-y-4" ${state.staffTab==='tailors'?'style="display:none"':''}>
+      <div class="flex gap-2">
+        <input id="salesName" placeholder="Salesperson name..." style="flex:1" />
+        <button id="addSales" class="btn">${svg('plus',18)}</button>
+      </div>
+      ${salesHtml||'<p class="text-sm text-gray-400 text-center py-4">No salespersons added yet</p>'}
+    </div>
+  </div>`;
+}
+
+function renderOrderForm() {
+  const o = state.currentOrder;
+  const f = o || { customerName:'', phone:'', suitType:ALL_SUIT_TYPES[0], tailorName:'', salesperson:(state.sales[0]||''), total:'', paid:'', deliveryDate:'', measurements:{}, status:'Pending' };
+
+  const team = getTeam(f.suitType);
+  const filtered = state.tailors.filter(t => t.suitType === f.suitType);
+  if (filtered.length && !filtered.find(t => t.name === f.tailorName)) {
+    f.tailorName = filtered[0].name;
+  }
+
+  const suitOpts = ALL_SUIT_TYPES.map(s => `<option value="${s}" ${s===f.suitType?'selected':''}>${s}</option>`).join('');
+  const tailorOpts = filtered.map(t => `<option value="${t.name}" ${t.name===f.tailorName?'selected':''}>${t.name}</option>`).join('');
+  const salesOpts = state.sales.map(s => `<option value="${s}" ${s===f.salesperson?'selected':''}>${s}</option>`).join('');
+
+  let measHtml = '';
+  for (const m of MEASUREMENTS) {
+    measHtml += `<div><label>${m}</label><input type="number" class="meas-input" data-meas="${m}" value="${f.measurements[m]||''}" /></div>`;
+  }
+
+  return `<div class="space-y-6">
+    <div class="flex items-center justify-between no-print">
+      <button id="backBtn" class="text-gray-500 hover:text-gray-700 flex items-center gap-1 text-sm">${svg('arrow-left',16)} Back</button>
+      <h2 class="text-lg font-bold">${o?'Edit Order':'New Order'}</h2>
+      <div class="w-16"></div>
+    </div>
+    <div class="card space-y-6 no-print">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div><label>Customer Name</label><input id="fName" value="${escapeHtml(f.customerName)}" /></div>
+        <div><label>Phone Number</label><input id="fPhone" type="tel" value="${escapeHtml(f.phone)}" /></div>
+        <div><label>Suit Type</label>
+          <select id="fSuitType">${suitOpts}</select>
+        </div>
+        <div><label>Tailor</label>
+          <select id="fTailor">${tailorOpts}</select>
+          ${filtered.length===0?'<p class="text-xs text-red-500 mt-1">No tailor for this suit type</p>':''}
+        </div>
+        <div><label>Salesperson</label>
+          <select id="fSales">${salesOpts}</select>
+        </div>
+        <div><label>Delivery Date</label><input id="fDelivery" type="date" value="${f.deliveryDate||''}" /></div>
+        <div><label>Status</label>
+          <select id="fStatus">
+            <option value="Pending" ${f.status==='Pending'?'selected':''}>Pending</option>
+            <option value="Stitched" ${f.status==='Stitched'?'selected':''}>Stitched</option>
+            <option value="Ready" ${f.status==='Ready'?'selected':''}>Ready</option>
+            <option value="Delivered" ${f.status==='Delivered'?'selected':''}>Delivered</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <h3 class="text-xs font-bold text-gray-500 uppercase mb-3">Measurements</h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">${measHtml}</div>
+      </div>
+      <div class="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
+        <div><label>Total Bill</label><input id="fTotal" type="number" class="text-lg font-bold" style="color:#1a73e8" value="${f.total}" /></div>
+        <div><label>Paid Amount</label><input id="fPaid" type="number" class="text-lg font-bold" style="color:#198754" value="${f.paid}" /></div>
+      </div>
+      <div class="flex gap-3">
+        <button id="saveOrder" class="btn flex-1">Save</button>
+        <button id="printSlip" class="btn-gray btn">${svg('printer',16)} Print Slip</button>
+      </div>
+    </div>
+    <button id="sendWA" class="btn-green btn w-full no-print">${svg('message-circle',20)} Send WhatsApp</button>
+    <div class="print-only card">
+      <div class="text-center border-b-2 border-gray-800 pb-3 mb-4">
+        <h2 class="text-xl font-bold">${escapeHtml(state.shopName)}</h2>
+        <p class="text-lg font-bold mt-1">Order #${o?o.id:'NEW'}</p>
+        <p class="text-sm font-semibold text-gray-600">${escapeHtml(f.suitType)}</p>
+      </div>
+      <div class="flex justify-center gap-6 text-sm mb-3">
+        <div><span class="text-gray-600">Delivery:</span> <span class="font-bold">${f.deliveryDate||'TBD'}</span></div>
+        <div><span class="text-gray-600">Status:</span> <span class="font-bold">${f.status}</span></div>
+      </div>
+      <div class="border-b border-gray-300 pb-3 mb-3">
+        <p class="font-bold text-xs uppercase text-center">Measurements</p>
+      </div>
+      <div class="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
+        ${Object.entries(f.measurements).filter(([,v])=>v).map(([k,v]) => `<div class="flex justify-between border-b border-gray-100 pb-1"><span class="text-gray-600">${k}</span><span class="font-bold">${v}"</span></div>`).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderReports() {
+  const totalRevenue = state.orders.reduce((a,o) => a + (parseFloat(o.total)||0), 0);
+  const totalPaid = state.orders.reduce((a,o) => a + (parseFloat(o.paid)||0), 0);
+  const totalPending = totalRevenue - totalPaid;
+  return `<div class="space-y-6">
+    <h2 class="text-xl font-bold">Analytics</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="card text-center p-6"><p class="text-xs text-gray-500 uppercase font-bold">Total Revenue</p><p class="text-3xl font-bold" style="color:#1a73e8">Rs.${totalRevenue}</p></div>
+      <div class="card text-center p-6"><p class="text-xs text-gray-500 uppercase font-bold">Collected</p><p class="text-3xl font-bold" style="color:#198754">Rs.${totalPaid}</p></div>
+      <div class="card text-center p-6"><p class="text-xs text-gray-500 uppercase font-bold">Pending</p><p class="text-3xl font-bold" style="color:#dc3545">Rs.${totalPending}</p></div>
+    </div>
+    <div class="card p-4"><p class="text-sm text-gray-500">Total Orders: <strong>${state.orders.length}</strong> &middot; Today: <strong>${state.orders.filter(o=>o.date===today()).length}</strong></p></div>
+    <button id="btnPDF2" class="btn">${svg('file-text',18)} Download Today's Report (PDF)</button>
+    <div class="border-t border-gray-200 pt-6 mt-6">
+      <h3 class="text-lg font-bold mb-4">Backup</h3>
+      <div class="flex gap-3">
+        <button id="exportBtn" class="btn btn-gray">${svg('download',16)} Export JSON</button>
+        <button id="importBtn" class="btn btn-gray">${svg('upload',16)} Import JSON</button>
+      </div>
+      <input type="file" id="importFile" accept=".json" style="display:none" />
+    </div>
+  </div>`;
+}
+
+function renderSettings() {
+  return `<div class="max-w-md mx-auto space-y-6">
+    <h2 class="text-xl font-bold">Settings</h2>
+    <div class="card space-y-4">
+      <div><label>Shop Name</label><input id="shopNameInput" value="${escapeHtml(state.shopName)}" /></div>
+      <div><label>Owner Password</label><input type="password" id="passInput" value="${escapeHtml(state.pass)}" /></div>
+      <button id="btnFactoryReset" class="btn btn-danger w-full">Factory Reset</button>
+    </div>
+  </div>`;
+}
+
+function renderNav() {
+  const v = state.view;
+  return `<nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-2 py-2 flex justify-around items-center no-print z-50" style="box-shadow:0 -2px 8px rgba(0,0,0,0.05)">
+    <button class="nav-btn flex flex-col items-center px-3 py-1 rounded ${v==='dashboard'?'text-blue-600':'text-gray-400'}" data-view="dashboard">${svg('home',20)}<span class="text-[10px] font-bold mt-0.5">HOME</span></button>
+    <button class="nav-btn flex flex-col items-center px-3 py-1 rounded ${v==='staff'?'text-blue-600':'text-gray-400'}" data-view="staff">${svg('users',20)}<span class="text-[10px] font-bold mt-0.5">STAFF</span></button>
+    <button id="navNewOrder" class="w-12 h-12 bg-blue-600 text-white rounded-full flex items-center justify-center -mt-4 shadow-lg" style="box-shadow:0 4px 12px rgba(26,115,232,0.4)">${svg('plus',28)}</button>
+    ${state.role==='owner'?'<button class="nav-btn flex flex-col items-center px-3 py-1 rounded '+(v==='reports'?'text-blue-600':'text-gray-400')+'" data-view="reports">'+svg('bar-chart',20)+'<span class="text-[10px] font-bold mt-0.5">REPORTS</span></button>':''}
+    ${state.role==='owner'?'<button class="nav-btn flex flex-col items-center px-3 py-1 rounded '+(v==='settings'?'text-blue-600':'text-gray-400')+'" data-view="settings">'+svg('settings',20)+'<span class="text-[10px] font-bold mt-0.5">CONFIG</span></button>':''}
+  </nav>`;
+}
+
+// ----- EVENTS -----
+function attachEvents() {
+  // Logout
+  const lo = document.getElementById('btnLogout');
+  if (lo) lo.onclick = () => { state.isAuth = false; state.role = null; state.loginPass = ''; render(); };
+
+  // Nav
+  document.querySelectorAll('.nav-btn').forEach(b => {
+    b.onclick = () => { state.view = b.dataset.view; state.currentOrder = null; render(); };
+  });
+
+  const nn = document.getElementById('navNewOrder');
+  if (nn) nn.onclick = () => { state.currentOrder = null; state.view = 'edit-order'; render(); };
+
+  // Dashboard search
+  const si = document.getElementById('searchInput');
+  if (si) si.oninput = () => { state.searchQuery = si.value; render(); };
+
+  // Dashboard order click
+  document.querySelectorAll('[data-order-id]').forEach(el => {
+    el.onclick = () => {
+      const id = parseInt(el.dataset.orderId);
+      state.currentOrder = state.orders.find(o => o.id === id);
+      state.view = 'edit-order';
+      render();
+    };
+  });
+
+  // Back button
+  const bb = document.getElementById('backBtn');
+  if (bb) bb.onclick = () => { state.view = 'dashboard'; render(); };
+
+  // Staff tabs
+  const tt = document.getElementById('tabTailors');
+  const ts = document.getElementById('tabSales');
+  if (tt) tt.onclick = () => { state.staffTab = 'tailors'; render(); };
+  if (ts) ts.onclick = () => { state.staffTab = 'sales'; render(); };
+
+  // Team selector changes suit dropdown
+  const tTeam = document.getElementById('tailorTeam');
+  const tSuit = document.getElementById('tailorSuit');
+  if (tTeam) tTeam.onchange = () => {
+    const team = tTeam.value;
+    tSuit.innerHTML = (team==='PR'?TEAMS.PR:TEAMS.PL).map(s => `<option value="${s}">${s}</option>`).join('');
+  };
+
+  // Add tailor
+  const at = document.getElementById('addTailor');
+  if (at) at.onclick = async () => {
+    const n = document.getElementById('tailorName').value.trim();
+    if (!n) return;
+    const suit = document.getElementById('tailorSuit').value;
+    state.tailors.push({ name: n, suitType: suit });
+    await saveTailors();
+    document.getElementById('tailorName').value = '';
+    render();
+  };
+
+  // Delete tailor
+  document.querySelectorAll('.del-tailor').forEach(b => {
+    b.onclick = async (e) => {
+      const idx = parseInt(e.currentTarget.dataset.idx);
+      state.tailors.splice(idx, 1);
+      await saveTailors();
+      render();
+    };
+  });
+
+  // Add sales
+  const as = document.getElementById('addSales');
+  if (as) as.onclick = async () => {
+    const n = document.getElementById('salesName').value.trim();
+    if (!n) return;
+    state.sales.push(n);
+    await saveSales();
+    document.getElementById('salesName').value = '';
+    render();
+  };
+
+  // Delete sales
+  document.querySelectorAll('.del-sales').forEach(b => {
+    b.onclick = async (e) => {
+      const idx = parseInt(e.currentTarget.dataset.idx);
+      state.sales.splice(idx, 1);
+      await saveSales();
+      render();
+    };
+  });
+
+  // Order form - suit type changes tailor
+  const fs = document.getElementById('fSuitType');
+  if (fs) fs.onchange = () => { renderOrderFormTailorUpdate(fs.value); };
+
+  // Save order
+  const so = document.getElementById('saveOrder');
+  if (so) so.onclick = async () => {
+    const o = state.currentOrder || {};
+    const data = {
+      customerName: document.getElementById('fName').value,
+      phone: document.getElementById('fPhone').value,
+      suitType: document.getElementById('fSuitType').value,
+      tailorName: document.getElementById('fTailor').value,
+      salesperson: document.getElementById('fSales').value,
+      deliveryDate: document.getElementById('fDelivery').value,
+      status: document.getElementById('fStatus').value,
+      total: document.getElementById('fTotal').value,
+      paid: document.getElementById('fPaid').value,
+      measurements: {}
+    };
+    document.querySelectorAll('.meas-input').forEach(el => {
+      data.measurements[el.dataset.meas] = el.value;
+    });
+    if (o.id) {
+      data.id = o.id;
+      data.date = o.date;
+      const idx = state.orders.findIndex(x => x.id === o.id);
+      if (idx >= 0) state.orders[idx] = data;
+    } else {
+      data.id = getNextId();
+      data.date = today();
+      state.orders.unshift(data);
+    }
+    await saveOrders();
+    state.view = 'dashboard';
+    render();
+  };
+
+  // Print slip
+  const ps = document.getElementById('printSlip');
+  if (ps) ps.onclick = () => window.print();
+
+  // Send WhatsApp
+  const sw = document.getElementById('sendWA');
+  if (sw) sw.onclick = () => {
+    const name = document.getElementById('fName').value;
+    const phone = document.getElementById('fPhone').value;
+    const suit = document.getElementById('fSuitType').value;
+    const tailor = document.getElementById('fTailor').value;
+    const delivery = document.getElementById('fDelivery').value || 'TBD';
+    const total = document.getElementById('fTotal').value || '0';
+    const paid = document.getElementById('fPaid').value || '0';
+    const oid = state.currentOrder ? state.currentOrder.id : 'NEW';
+    const msg = `Hello! by ${state.shopName} Order #${oid}, ${suit}, Tailor: ${tailor}, Delivery: ${delivery}, Total: Rs.${total}, Advance: Rs.${paid}.`;
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
+  };
+
+  // PDF
+  const pdf1 = document.getElementById('btnPDF');
+  const pdf2 = document.getElementById('btnPDF2');
+  const makePDF = () => {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
-    const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
-    const to = stats.todayOrders;
+    const d = new Date().toLocaleDateString('en-IN', { day:'numeric', month:'long', year:'numeric' });
+    const to = state.orders.filter(o => o.date === today());
     let y = 20;
     doc.setFontSize(18);
-    doc.text(shopName, 105, y, { align: 'center' });
+    doc.text(state.shopName, 105, y, { align:'center' });
     y += 10;
     doc.setFontSize(12);
-    doc.text(`Daily Report - ${today}`, 105, y, { align: 'center' });
+    doc.text('Daily Report - '+d, 105, y, { align:'center' });
     y += 10;
     doc.setFontSize(11);
-    doc.text(`Total Orders Today: ${to.length}`, 14, y);
-    y += 8;
-    doc.text(`Total Revenue Today: Rs. ${to.reduce((a,o) => a + (parseFloat(o.total)||0), 0)}`, 14, y);
-    y += 8;
-    doc.text(`Total Collected Today: Rs. ${to.reduce((a,o) => a + (parseFloat(o.paid)||0), 0)}`, 14, y);
-    y += 12;
-    if (to.length > 0) {
+    doc.text('Total Orders Today: '+to.length, 14, y); y += 8;
+    doc.text('Total Revenue: Rs. '+to.reduce((a,o)=>a+(parseFloat(o.total)||0),0), 14, y); y += 8;
+    doc.text('Total Collected: Rs. '+to.reduce((a,o)=>a+(parseFloat(o.paid)||0),0), 14, y); y += 12;
+    if (to.length) {
       doc.setFontSize(10);
-      doc.text('Orders:', 14, y);
-      y += 6;
-      to.forEach((o, i) => {
-        const line = `${i+1}. #${o.id} ${o.customerName} - ${o.suitType||'N/A'} - Rs.${o.total} [${o.status}]`;
+      doc.text('Orders:', 14, y); y += 6;
+      to.forEach((o,i) => {
         if (y > 270) { doc.addPage(); y = 20; }
-        doc.text(line, 18, y);
+        doc.text((i+1)+'. #'+o.id+' '+o.customerName+' - '+o.suitType+' - Rs.'+o.total+' ['+o.status+']', 18, y);
         y += 6;
       });
     }
-    doc.save(`imran-silk-house-report-${new Date().toISOString().split('T')[0]}.pdf`);
+    doc.save('imran-collections-report-'+new Date().toISOString().split('T')[0]+'.pdf');
+  };
+  if (pdf1) pdf1.onclick = makePDF;
+  if (pdf2) pdf2.onclick = makePDF;
+
+  // Settings
+  const sn = document.getElementById('shopNameInput');
+  if (sn) sn.onchange = async () => { state.shopName = sn.value; await saveShopName(); };
+  const pi = document.getElementById('passInput');
+  if (pi) pi.onchange = async () => { state.pass = pi.value; await savePass(); };
+
+  // Factory reset
+  const fr = document.getElementById('btnFactoryReset');
+  if (fr) fr.onclick = async () => {
+    if (!confirm('Delete all data?')) return;
+    await dbClear('orders');
+    await dbClear('tailors');
+    await dbClear('sales');
+    localStorage.removeItem('imran_owner_pass');
+    localStorage.removeItem('imran_shop_name');
+    localStorage.removeItem('imran_order_counter');
+    window.location.reload();
   };
 
-  if (!isAuth) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center" style={{background:'#f0f2f5'}}>
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold" style={{color:'#1a1a2e'}}>IMRAN SILK HOUSE</h1>
-          <p className="text-sm text-gray-500 mt-1">Tailoring Management</p>
-        </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-8 w-full max-w-sm space-y-4">
-          <div>
-            <label>Owner Password</label>
-            <input type="password" placeholder={pass ? "Enter password" : "Set password"} value={loginPass} onChange={e => setLoginPass(e.target.value)} />
-          </div>
-          <button className="btn w-full" onClick={() => {
-            if (!pass) { setPass(loginPass); setRole('owner'); setIsAuth(true); return; }
-            if (loginPass === pass) { setRole('owner'); setIsAuth(true); return; }
-            alert('Wrong password');
-          }}>{pass ? 'Login as Owner' : 'Set Password & Login'}</button>
-          {pass && <button className="btn-outline btn w-full" onClick={() => { setRole('sales'); setIsAuth(true); }}>Enter as Sales (Guest)</button>}
-        </div>
-      </div>
-    );
+  // Export
+  const ex = document.getElementById('exportBtn');
+  if (ex) ex.onclick = async () => {
+    const data = {
+      shopName: state.shopName,
+      orders: state.orders,
+      tailors: state.tailors,
+      sales: state.sales,
+      counter: state.orderCounter,
+      exportedAt: new Date().toISOString()
+    };
+    const blob = new Blob([JSON.stringify(data,null,2)], { type:'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'imran-collections-backup.json';
+    a.click();
+  };
+
+  // Import
+  const im = document.getElementById('importBtn');
+  const imFile = document.getElementById('importFile');
+  if (im && imFile) im.onclick = () => imFile.click();
+  if (imFile) imFile.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (data.orders) {
+        await dbClear('orders');
+        for (const o of data.orders) await dbPutKey('orders', { id: o.id, value: o });
+        state.orders = data.orders;
+      }
+      if (data.tailors) {
+        await dbClear('tailors');
+        for (const t of data.tailors) await dbAdd('tailors', t);
+        state.tailors = data.tailors;
+      }
+      if (data.sales) {
+        await dbClear('sales');
+        for (const s of data.sales) await dbAdd('sales', s);
+        state.sales = data.sales;
+      }
+      if (data.shopName) { state.shopName = data.shopName; await saveShopName(); }
+      if (data.counter) { state.orderCounter = data.counter; await saveCounter(); }
+      alert('Backup restored successfully!');
+      render();
+    } catch(err) {
+      alert('Invalid backup file: '+err.message);
+    }
+  };
+}
+
+function renderOrderFormTailorUpdate(suitType) {
+  const sel = document.getElementById('fTailor');
+  if (!sel) return;
+  const filtered = state.tailors.filter(t => t.suitType === suitType);
+  sel.innerHTML = filtered.map(t => `<option value="${t.name}">${t.name}</option>`).join('');
+}
+
+// ----- INIT -----
+async function init() {
+  // Handle ?reset
+  if (window.location.search.includes('reset')) {
+    await dbClear('orders');
+    await dbClear('tailors');
+    await dbClear('sales');
+    localStorage.removeItem('imran_owner_pass');
+    localStorage.removeItem('imran_shop_name');
+    localStorage.removeItem('imran_order_counter');
+    window.history.replaceState({}, document.title, window.location.pathname);
+    window.location.reload();
+    return;
   }
+  await loadData();
+  render();
+}
 
-  return (
-    <div className="min-h-screen flex flex-col" style={{paddingBottom:'80px'}}>
-      <header className="bg-white border-b border-gray-200 px-4 py-3 flex justify-between items-center sticky top-0 z-50 no-print">
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-bold" style={{color:'#1a1a2e'}}>IMRAN SILK HOUSE</h1>
-          <div className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px] font-bold uppercase">{role}</div>
-        </div>
-        <button onClick={() => { setIsAuth(false); setLoginPass(''); setRole(null); }} className="text-gray-400 hover:text-gray-600"><Icon name="log-out" size={18} /></button>
-      </header>
-
-      <main className="px-4 py-6 max-w-4xl mx-auto w-full" style={{maxWidth:'900px'}}>
-        {view === 'dashboard' && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="card text-center"><p className="text-xs text-gray-500 uppercase font-bold">Today</p><p className="text-2xl font-bold">{stats.totalToday}</p></div>
-              <div className="card text-center"><p className="text-xs text-gray-500 uppercase font-bold">Total</p><p className="text-2xl font-bold">{stats.totalOrders}</p></div>
-              {role === 'owner' && <div className="card text-center"><p className="text-xs text-gray-500 uppercase font-bold">Revenue</p><p className="text-2xl font-bold" style={{color:'#1a73e8'}}>Rs.{stats.totalRevenue}</p></div>}
-              <div className="card text-center"><p className="text-xs text-gray-500 uppercase font-bold">Pending</p><p className="text-2xl font-bold" style={{color:'#dc3545'}}>Rs.{stats.totalPending}</p></div>
-            </div>
-
-            <div className="flex gap-2 no-print">
-              <div className="relative flex-1">
-                <input placeholder="Search orders..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-10" />
-                <Icon name="search" className="absolute left-3 top-3 text-gray-400" size={16} />
-              </div>
-              <button onClick={downloadTodayPDF} className="btn-gray btn text-sm flex items-center gap-1"><Icon name="file-text" size={16} /> PDF</button>
-            </div>
-
-            <div className="space-y-2">
-              {filteredOrders.map(order => (
-                <div key={order.id} className="card card-hover flex justify-between items-center cursor-pointer" onClick={() => { setCurrentOrder(order); setView('edit-order'); }}>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold">#{order.id}</span>
-                      <span className="font-semibold truncate">{order.customerName}</span>
-                      <span className="text-xs text-gray-400">{order.suitType||''}</span>
-                    </div>
-                    <p className="text-xs text-gray-400 truncate">{order.phone} &middot; {order.tailorName} &middot; {order.salesperson}</p>
-                    <p className="text-xs text-gray-400">Delivery: {order.deliveryDate||'N/A'} &middot; {order.suitType||''}</p>
-                  </div>
-                  <div className="text-right ml-4 flex-shrink-0">
-                    <p className="font-bold" style={{color:'#1a73e8'}}>Rs.{order.total}</p>
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded ${order.status==='Pending'?'bg-yellow-100 text-yellow-700':order.status==='Stitched'?'bg-blue-100 text-blue-700':order.status==='Ready'?'bg-green-100 text-green-700':'bg-gray-100 text-gray-500'}`}>{order.status}</span>
-                  </div>
-                </div>
-              ))}
-              {filteredOrders.length === 0 && <p className="text-center text-gray-400 py-8">No orders found</p>}
-            </div>
-          </div>
-        )}
-
-        {view === 'edit-order' && (
-          <OrderForm
-            order={currentOrder}
-            tailors={tailorList}
-            salespersons={salespersons}
-            onSave={o => {
-              if (o.id) {
-                setOrders(orders.map(x => x.id === o.id ? o : x));
-              } else {
-                o.id = getNextId();
-                o.date = new Date().toISOString().split('T')[0];
-                setOrders([o, ...orders]);
-              }
-              setView('dashboard');
-            }}
-            onBack={() => setView('dashboard')}
-            shopName={shopName}
-          />
-        )}
-
-        {view === 'staff' && (
-          <StaffManager
-            tailors={tailorList}
-            setTailors={setTailorList}
-            salespersons={salespersons}
-            setSalespersons={setSalespersons}
-          />
-        )}
-
-        {view === 'reports' && role === 'owner' && (
-          <div className="space-y-6">
-            <h2 className="text-xl font-bold">Analytics</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="card text-center p-6"><p className="text-xs text-gray-500 uppercase font-bold">Total Revenue</p><p className="text-3xl font-bold" style={{color:'#1a73e8'}}>Rs.{stats.totalRevenue}</p></div>
-              <div className="card text-center p-6"><p className="text-xs text-gray-500 uppercase font-bold">Collected</p><p className="text-3xl font-bold" style={{color:'#198754'}}>Rs.{stats.totalPaid}</p></div>
-              <div className="card text-center p-6"><p className="text-xs text-gray-500 uppercase font-bold">Pending</p><p className="text-3xl font-bold" style={{color:'#dc3545'}}>Rs.{stats.totalPending}</p></div>
-            </div>
-            <div className="card p-4"><p className="text-sm text-gray-500">Total Orders: <strong>{stats.totalOrders}</strong> &middot; Today: <strong>{stats.totalToday}</strong></p></div>
-            <button onClick={downloadTodayPDF} className="btn flex items-center gap-2"><Icon name="file-text" size={18} /> Download Today's Report (PDF)</button>
-          </div>
-        )}
-
-        {view === 'settings' && role === 'owner' && (
-          <div className="max-w-md mx-auto space-y-6">
-            <h2 className="text-xl font-bold">Settings</h2>
-            <div className="card space-y-4">
-              <div><label>Shop Name</label><input value={shopName} onChange={e => setShopName(e.target.value)} /></div>
-              <div><label>Owner Password</label><input type="password" value={pass} onChange={e => setPass(e.target.value)} /></div>
-              <button onClick={() => { if (confirm('Delete all data?')) { localStorage.clear(); window.location.reload(); } }} className="btn btn-danger w-full">Factory Reset</button>
-            </div>
-          </div>
-        )}
-      </main>
-
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-2 py-2 flex justify-around items-center no-print z-50" style={{boxShadow:'0 -2px 8px rgba(0,0,0,0.05)'}}>
-        <button onClick={() => setView('dashboard')} className={`flex flex-col items-center px-3 py-1 rounded ${view==='dashboard'?'text-blue-600':'text-gray-400'}`}><Icon name="home" size={20} /><span className="text-[10px] font-bold mt-0.5">HOME</span></button>
-        <button onClick={() => setView('staff')} className={`flex flex-col items-center px-3 py-1 rounded ${view==='staff'?'text-blue-600':'text-gray-400'}`}><Icon name="users" size={20} /><span className="text-[10px] font-bold mt-0.5">STAFF</span></button>
-        <button onClick={() => { setCurrentOrder(null); setView('edit-order'); }} className="w-12 h-12 bg-blue-600 text-white rounded-full flex items-center justify-center -mt-4 shadow-lg" style={{boxShadow:'0 4px 12px rgba(26,115,232,0.4)'}}><Icon name="plus" size={28} /></button>
-        {role === 'owner' && <button onClick={() => setView('reports')} className={`flex flex-col items-center px-3 py-1 rounded ${view==='reports'?'text-blue-600':'text-gray-400'}`}><Icon name="bar-chart-3" size={20} /><span className="text-[10px] font-bold mt-0.5">REPORTS</span></button>}
-        {role === 'owner' && <button onClick={() => setView('settings')} className={`flex flex-col items-center px-3 py-1 rounded ${view==='settings'?'text-blue-600':'text-gray-400'}`}><Icon name="settings" size={20} /><span className="text-[10px] font-bold mt-0.5">CONFIG</span></button>}
-      </nav>
-    </div>
-  );
-};
-
-const StaffManager = ({ tailors, setTailors, salespersons, setSalespersons }) => {
-  const [tab, setTab] = useState('tailors');
-  const [name, setName] = useState('');
-  const [role, setRole] = useState(SUIT_TYPES[0]);
-
-  const addTailor = () => {
-    if (!name) return;
-    setTailors([...tailors, { name, role }]);
-    setName('');
-  };
-
-  const removeTailor = (idx) => {
-    setTailors(tailors.filter((_, i) => i !== idx));
-  };
-
-  const addSales = () => {
-    if (!name) return;
-    setSalespersons([...salespersons, name]);
-    setName('');
-  };
-
-  const removeSales = (idx) => {
-    setSalespersons(salespersons.filter((_, i) => i !== idx));
-  };
-
-  return (
-    <div className="space-y-6 max-w-md mx-auto">
-      <h2 className="text-xl font-bold">Staff Control</h2>
-      <div className="flex bg-gray-100 p-1 rounded-lg">
-        <button onClick={() => setTab('tailors')} className={`flex-1 py-2 rounded-md text-sm font-bold ${tab==='tailors'?'bg-white shadow-sm text-blue-600':'text-gray-500'}`}>Tailors</button>
-        <button onClick={() => setTab('sales')} className={`flex-1 py-2 rounded-md text-sm font-bold ${tab==='sales'?'bg-white shadow-sm text-blue-600':'text-gray-500'}`}>Sales</button>
-      </div>
-
-      {tab === 'tailors' && (
-        <div className="space-y-4">
-          <div className="flex gap-2">
-            <input className="flex-1" placeholder="Tailor name..." value={name} onChange={e => setName(e.target.value)} />
-            <select className="w-40" value={role} onChange={e => setRole(e.target.value)}>
-              {SUIT_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-            <button onClick={addTailor} className="btn"><Icon name="plus" size={18} /></button>
-          </div>
-          <div className="space-y-2">
-            {tailors.map((t, i) => (
-              <div key={i} className="card flex justify-between items-center">
-                <div>
-                  <span className="font-semibold">{t.name}</span>
-                  <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">{t.role}</span>
-                </div>
-                <button onClick={() => removeTailor(i)} className="text-red-400 hover:text-red-600"><Icon name="trash-2" size={16} /></button>
-              </div>
-            ))}
-            {tailors.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No tailors added yet</p>}
-          </div>
-        </div>
-      )}
-
-      {tab === 'sales' && (
-        <div className="space-y-4">
-          <div className="flex gap-2">
-            <input className="flex-1" placeholder="Salesperson name..." value={name} onChange={e => setName(e.target.value)} />
-            <button onClick={addSales} className="btn"><Icon name="plus" size={18} /></button>
-          </div>
-          <div className="space-y-2">
-            {salespersons.map((s, i) => (
-              <div key={i} className="card flex justify-between items-center">
-                <span className="font-semibold">{s}</span>
-                <button onClick={() => removeSales(i)} className="text-red-400 hover:text-red-600"><Icon name="trash-2" size={16} /></button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-const OrderForm = ({ order, tailors, salespersons, onSave, onBack, shopName }) => {
-  const [f, setF] = useState(order || {
-    customerName: '', phone: '', suitType: SUIT_TYPES[0], tailorName: '', salesperson: (salespersons[0]||''),
-    total: '', paid: '', deliveryDate: '', measurements: {}, status: 'Pending'
-  });
-
-  const filteredTailors = useMemo(() => {
-    return tailors.filter(t => t.role === f.suitType);
-  }, [tailors, f.suitType]);
-
-  useEffect(() => {
-    if (filteredTailors.length > 0 && !f.tailorName) {
-      setF(prev => ({ ...prev, tailorName: filteredTailors[0].name }));
-    }
-    if (filteredTailors.length > 0 && !filteredTailors.find(t => t.name === f.tailorName)) {
-      setF(prev => ({ ...prev, tailorName: filteredTailors[0].name }));
-    }
-  }, [f.suitType]);
-
-  const sendWhatsApp = () => {
-    const msg = `Hello! by ${shopName} Order #${order?.id || 'NEW'} Ordered ${f.suitType}, Delivery date: ${f.deliveryDate || 'TBD'}, Amount to be paid: Rs.${f.total}.`;
-    window.open(`https://wa.me/${f.phone}?text=${encodeURIComponent(msg)}`, '_blank');
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between no-print">
-        <button onClick={onBack} className="text-gray-500 hover:text-gray-700 flex items-center gap-1 text-sm"><Icon name="arrow-left" size={16} /> Back</button>
-        <h2 className="text-lg font-bold">{order ? 'Edit Order' : 'New Order'}</h2>
-        <div className="w-16"></div>
-      </div>
-
-      <div className="card space-y-6 no-print">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div><label>Customer Name</label><input value={f.customerName} onChange={e => setF({...f, customerName: e.target.value})} /></div>
-          <div><label>Phone Number</label><input type="tel" value={f.phone} onChange={e => setF({...f, phone: e.target.value})} /></div>
-          <div><label>Suit Type</label>
-            <select value={f.suitType} onChange={e => setF({...f, suitType: e.target.value, tailorName: ''})}>
-              {SUIT_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div><label>Tailor (by role)</label>
-            <select value={f.tailorName} onChange={e => setF({...f, tailorName: e.target.value})}>
-              {filteredTailors.map(t => <option key={t.name} value={t.name}>{t.name}</option>)}
-            </select>
-            {filteredTailors.length === 0 && <p className="text-xs text-red-500 mt-1">No tailor available for this suit type</p>}
-          </div>
-          <div><label>Salesperson</label>
-            <select value={f.salesperson} onChange={e => setF({...f, salesperson: e.target.value})}>
-              {salespersons.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div><label>Delivery Date</label><input type="date" value={f.deliveryDate} onChange={e => setF({...f, deliveryDate: e.target.value})} /></div>
-          <div><label>Status</label>
-            <select value={f.status} onChange={e => setF({...f, status: e.target.value})}>
-              <option value="Pending">Pending</option>
-              <option value="Stitched">Stitched</option>
-              <option value="Ready">Ready</option>
-              <option value="Delivered">Delivered</option>
-            </select>
-          </div>
-        </div>
-
-        <div>
-          <h3 className="text-xs font-bold text-gray-500 uppercase mb-3">Measurements</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {MEASUREMENTS.map(m => (
-              <div key={m}><label>{m}</label><input type="number" value={f.measurements[m] || ''} onChange={e => setF({...f, measurements: {...f.measurements, [m]: e.target.value}})} /></div>
-            ))}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
-          <div><label>Total Bill</label><input type="number" className="text-lg font-bold" style={{color:'#1a73e8'}} value={f.total} onChange={e => setF({...f, total: e.target.value})} /></div>
-          <div><label>Paid</label><input type="number" className="text-lg font-bold" style={{color:'#198754'}} value={f.paid} onChange={e => setF({...f, paid: e.target.value})} /></div>
-        </div>
-
-        <div className="flex gap-3">
-          <button onClick={() => onSave(f)} className="btn flex-1">Save</button>
-          <button onClick={() => window.print()} className="btn-gray btn flex items-center gap-2"><Icon name="printer" size={16} /> Print Slip</button>
-        </div>
-      </div>
-
-      <button onClick={sendWhatsApp} className="btn-green btn w-full flex items-center justify-center gap-2 no-print"><Icon name="message-circle" size={20} /> Send WhatsApp</button>
-
-      <div className="print-only card">
-        <div className="text-center border-b-2 border-gray-800 pb-3 mb-4">
-          <h2 className="text-xl font-bold">{shopName}</h2>
-          <p className="text-lg font-bold mt-1">Order #{order?.id || 'NEW'}</p>
-          <p className="text-sm font-semibold text-gray-600">{f.suitType}</p>
-        </div>
-        <div className="flex justify-center gap-6 text-sm mb-3">
-          <div><span className="text-gray-600">Delivery:</span> <span className="font-bold">{f.deliveryDate || 'TBD'}</span></div>
-          <div><span className="text-gray-600">Status:</span> <span className="font-bold">{f.status}</span></div>
-        </div>
-        <div className="border-b border-gray-300 pb-3 mb-3">
-          <p className="font-bold text-xs uppercase text-center">Measurements</p>
-        </div>
-        <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
-          {Object.entries(f.measurements).filter(([,v]) => v).map(([k,v]) => (
-            <div key={k} className="flex justify-between border-b border-gray-100 pb-1">
-              <span className="text-gray-600">{k}</span>
-              <span className="font-bold">{v}"</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<App />);
+init();
 </script>
 </body>
 </html>
