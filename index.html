@@ -343,12 +343,10 @@ function renderStaff() {
   let tailorsHtml = '';
   for (let i = 0; i < state.tailors.length; i++) {
     const t = state.tailors[i];
-    const team = getTeam(t.suitType);
     tailorsHtml += `<div class="card flex justify-between items-center">
       <div>
         <span class="font-semibold">${escapeHtml(t.name)}</span>
-        <span class="badge ${team==='PR'?'badge-pr':'badge-pl'} ml-2">${team}</span>
-        <span class="text-xs text-gray-400 ml-1">${escapeHtml(t.suitType)}</span>
+        <span class="badge ${t.team==='PR'?'badge-pr':'badge-pl'} ml-2">${t.team}</span>
       </div>
       <button class="del-tailor text-red-400 hover:text-red-600" data-idx="${i}">${svg('trash-2',16)}</button>
     </div>`;
@@ -363,8 +361,6 @@ function renderStaff() {
   }
 
   const teamOpts = `<option value="PR">PR</option><option value="PL">PL</option>`;
-  const prOpts = TEAMS.PR.map(s => `<option value="${s}">${s}</option>`).join('');
-  const plOpts = TEAMS.PL.map(s => `<option value="${s}">${s}</option>`).join('');
 
   return `<div class="space-y-6 max-w-md mx-auto">
     <h2 class="text-xl font-bold">Staff Control</h2>
@@ -375,8 +371,7 @@ function renderStaff() {
     <div id="staffTailors" class="space-y-4" ${state.staffTab==='sales'?'style="display:none"':''}>
       <div class="flex gap-2">
         <input id="tailorName" placeholder="Tailor name..." style="flex:1" />
-        <select id="tailorTeam" style="width:100px">${teamOpts}</select>
-        <select id="tailorSuit" style="flex:1">${prOpts}</select>
+        <select id="tailorTeam" style="width:120px">${teamOpts}</select>
         <button id="addTailor" class="btn">${svg('plus',18)}</button>
       </div>
       ${tailorsHtml||'<p class="text-sm text-gray-400 text-center py-4">No tailors added yet</p>'}
@@ -396,7 +391,8 @@ function renderOrderForm() {
   const f = o || { customerName:'', phone:'', suitTypes:[], suitType:'', tailorName:'', salesperson:(state.sales[0]||''), total:'', paid:'', deliveryDate:'', measurements:{}, status:'Pending' };
 
   if (!f.suitTypes) f.suitTypes = f.suitType ? [f.suitType] : [];
-  const filtered = state.tailors.filter(t => f.suitTypes.includes(t.suitType));
+  const selectedTeams = [...new Set(f.suitTypes.map(s => getTeam(s)).filter(Boolean))];
+  const filtered = state.tailors.filter(t => selectedTeams.length === 0 || selectedTeams.includes(t.team || getTeam(t.suitType)));
   const selectedTailor = filtered.find(t => t.name === f.tailorName);
   if (filtered.length && !selectedTailor) {
     f.tailorName = filtered[0].name;
@@ -565,21 +561,13 @@ function attachEvents() {
   if (tt) tt.onclick = () => { state.staffTab = 'tailors'; render(); };
   if (ts) ts.onclick = () => { state.staffTab = 'sales'; render(); };
 
-  // Team selector changes suit dropdown
-  const tTeam = document.getElementById('tailorTeam');
-  const tSuit = document.getElementById('tailorSuit');
-  if (tTeam) tTeam.onchange = () => {
-    const team = tTeam.value;
-    tSuit.innerHTML = (team==='PR'?TEAMS.PR:TEAMS.PL).map(s => `<option value="${s}">${s}</option>`).join('');
-  };
-
   // Add tailor
   const at = document.getElementById('addTailor');
   if (at) at.onclick = async () => {
     const n = document.getElementById('tailorName').value.trim();
     if (!n) return;
-    const suit = document.getElementById('tailorSuit').value;
-    state.tailors.push({ name: n, suitType: suit });
+    const team = document.getElementById('tailorTeam').value;
+    state.tailors.push({ name: n, team: team });
     await saveTailors();
     document.getElementById('tailorName').value = '';
     render();
